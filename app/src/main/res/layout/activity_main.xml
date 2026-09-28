@@ -94,7 +94,7 @@
             android:layout_marginTop="4dp"
             android:background="@android:drawable/editbox_background"
             android:gravity="top"
-            android:isVerticalScrollBarEnabled="true"
+            android:scrollbars="vertical"
             android:minHeight="100dp"
             android:padding="12dp"
             android:textSize="13sp"
@@ -138,7 +138,7 @@
             android:id="@+id/logView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:isVerticalScrollBarEnabled="true"
+            android:scrollbars="vertical"
             android:lineSpacingExtra="4dp"
             android:textSize="12sp" />
     </ScrollView>
