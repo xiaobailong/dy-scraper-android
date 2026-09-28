@@ -152,7 +152,7 @@ set "APK_PATH="
 set "APK_NAME=斗虫-v%V_NAME%.apk"
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "%APK_NAME%" > nul
-    set "APK_PATH=%%f"
+    set "APK_PATH=%CD%\%APK_NAME%"
     echo  APK: %APK_NAME%  ^(%%~zf bytes^)
 )
 if "%APK_PATH%"=="" (
@@ -308,8 +308,13 @@ if %BUILD_EXIT% neq 0 (
 )
 echo       构建成功。
 
+set "APK_NAME=斗虫-v%V_NAME%.apk"
+if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
-for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do set "APK_PATH=%%f"
+for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
+    copy /y "%%f" "%APK_NAME%" > nul
+    set "APK_PATH=%CD%\%APK_NAME%"
+)
 if "%APK_PATH%"=="" (
     echo [错误] 找不到APK文件！
     pause
