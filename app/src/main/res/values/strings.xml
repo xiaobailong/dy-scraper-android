@@ -1,3 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">抖音抓取工具</string>
+
+    <string name="menu_more">更多</string>
+    <string name="settings_log">日志</string>
+    <string name="settings_mode">运行模式</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_log_title">日志设置</string>
+    <string name="settings_log_output">日志输出</string>
+    <string name="settings_log_hint">关闭后立即停止所有日志输出（文件日志与 Logcat）；设置会保存，重启应用后依然生效</string>
+    <string name="settings_log_on">日志输出已开启</string>
+    <string name="settings_log_off">日志输出已关闭</string>
+    <string name="settings_log_path">日志文件：%1$s</string>
+    <string name="settings_mode_title">运行模式设置</string>
+    <string name="settings_mode_label">运行模式</string>
+    <string name="mode_local">本地模式</string>
+    <string name="mode_youdao">有道模式</string>
+    <string name="mode_switch_toast">已切换到：%1$s</string>
+    <string name="log_file_not_created">（当前未创建）</string>
+
+    <string name="about_title">关于</string>
+    <string name="about_version_line">v%1$s (build %2$d)</string>
+    <string name="about_label_build_type">构建类型</string>
+    <string name="about_label_build_time">构建时间</string>
+    <string name="about_label_git_commit">Git 提交</string>
+    <string name="about_label_package">包名</string>
+    <string name="about_label_env">运行环境</string>
+    <string name="about_label_log_file">日志文件</string>
+    <string name="about_value_unknown">未知</string>
+
+    <string name="btn_start">开始抓取</string>
+    <string name="btn_stop">停止抓取</string>
+    <string name="btn_save_draft">暂存</string>
+    <string name="draft_saved">已暂存</string>
+    <string name="btn_fetch_youdao">获取有道URL</string>
+    <string name="hint_url_input">请粘贴抖音链接，每行一个\ne.g. https://www.douyin.com/video/xxx</string>
+    <string name="label_url_list">提取到的URL（共%1$d个）</string>
+    <string name="label_youdao_fetching">正在从有道获取URL…</string>
+    <string name="label_youdao_empty">未获取到URL</string>
+    <string name="label_youdao_error">获取失败：%1$s</string>
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_log_settings"
+        android:title="@string/settings_log" />
+    <item
+        android:id="@+id/action_mode_settings"
+        android:title="@string/settings_mode" />
+    <item
+        android:id="@+id/action_about"
+        android:title="@string/settings_about" />
+</menu>

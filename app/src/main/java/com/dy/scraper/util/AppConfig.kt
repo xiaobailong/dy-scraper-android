@@ -9,8 +9,6 @@ object AppConfig {
     var downloadVideoDir: File = File("/storage/emulated/0/Download/douyin/videos")
     var downloadImageDir: File = File("/storage/emulated/0/Download/douyin/images")
     var resultDir: File = File("/storage/emulated/0/Download/douyin/results")
-    var tempVideoDir: File = File("/storage/emulated/0/Download/douyin/temp_videos")
-    var tempImageDir: File = File("/storage/emulated/0/Download/douyin/temp_images")
 
     // ── 文件大小限制 ──
     const val MIN_FILE_SIZE: Long = 10 * 1024          // 10KB
@@ -51,12 +49,10 @@ object AppConfig {
         downloadVideoDir = File(root, "videos").also { it.mkdirs() }
         downloadImageDir = File(root, "images").also { it.mkdirs() }
         resultDir = File(root, "results").also { it.mkdirs() }
-        tempVideoDir = File(root, "temp_videos").also { it.mkdirs() }
-        tempImageDir = File(root, "temp_images").also { it.mkdirs() }
     }
 
     fun ensureDirs() {
-        listOf(downloadVideoDir, downloadImageDir, resultDir, tempVideoDir, tempImageDir)
+        listOf(downloadVideoDir, downloadImageDir, resultDir)
             .forEach { it.mkdirs() }
     }
 }

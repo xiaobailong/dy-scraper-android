@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/app_name"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/tvAboutVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textColor="@color/primary"
+            android:textSize="13sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="12dp"
+            android:background="@color/divider" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/AppInfoLabel"
+                android:text="@string/about_label_build_type" />
+
+            <TextView
+                android:id="@+id/tvAboutBuildType"
+                style="@style/AppInfoValue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/AppInfoLabel"
+                android:text="@string/about_label_build_time" />
+
+            <TextView
+                android:id="@+id/tvAboutBuildTime"
+                style="@style/AppInfoValue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/AppInfoLabel"
+                android:text="@string/about_label_git_commit" />
+
+            <TextView
+                android:id="@+id/tvAboutGitCommit"
+                style="@style/AppInfoValue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/AppInfoLabel"
+                android:text="@string/about_label_package" />
+
+            <TextView
+                android:id="@+id/tvAboutPackage"
+                style="@style/AppInfoValue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/AppInfoLabel"
+                android:text="@string/about_label_env" />
+
+            <TextView
+                android:id="@+id/tvAboutEnv"
+                style="@style/AppInfoValue" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <TextView
+                style="@style/AppInfoLabel"
+                android:text="@string/about_label_log_file" />
+
+            <TextView
+                android:id="@+id/tvAboutLogFile"
+                style="@style/AppInfoValue" />
+        </LinearLayout>
+
+    </LinearLayout>
+</ScrollView>

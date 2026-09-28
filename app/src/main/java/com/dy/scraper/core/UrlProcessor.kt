@@ -115,19 +115,19 @@ class UrlProcessor(
         // ── 7. 下载 ──
         Logger.log("")
         Logger.log("[5/6] 下载文件...")
-        Logger.log("  视频临时目录: ${AppConfig.tempVideoDir.absolutePath}")
+        Logger.log("  视频目录: ${AppConfig.downloadVideoDir.absolutePath}")
 
         ctx.videoResults = Downloader.downloadFiles(
-            ctx, AppConfig.tempVideoDir, "video",
+            ctx, AppConfig.downloadVideoDir, "video",
             maxWorkers = AppConfig.MAX_VIDEO_WORKERS,
             md5Registry = md5Registry,
             videoHashRegistry = videoHashRegistry,
         )
         ctx.pushStage("download_video")
 
-        Logger.log("  图片临时目录: ${AppConfig.tempImageDir.absolutePath}")
+        Logger.log("  图片目录: ${AppConfig.downloadImageDir.absolutePath}")
         ctx.imageResults = Downloader.downloadFiles(
-            ctx, AppConfig.tempImageDir, "image",
+            ctx, AppConfig.downloadImageDir, "image",
             maxWorkers = AppConfig.MAX_IMAGE_WORKERS,
             md5Registry = md5Registry,
         )

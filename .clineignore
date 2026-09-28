@@ -1,0 +1,41 @@
+# .clineignore —— 让 Cline 别扫构建产物（token 最大的一处浪费）
+# 语法同 .gitignore（含 `!` 反选）。**故意不忽略 `build/logs/`**：
+#   `build\logs\build_*.log` 是排查构建问题的唯一现场。
+#   本项目为 Android 项目，额外忽略 Gradle 编译中间产物和 dex 文件。
+
+# Gradle / 构建产物（万级文件）
+/build/generated/
+/build/intermediates/
+/build/kotlin/
+/build/outputs/
+/build/tmp/
+/app/build/
+/build/reports/
+.gradle/
+.gradle_home/
+
+# 二进制 / 分发产物
+*.apk
+*.aab
+*.jar
+*.class
+*.dex
+
+# 一次性文件（日志除外，见上）
+*.log
+!/build/logs/
+!/build/logs/*.log
+
+# 机器本地 / 私密（绝对路径、签名、凭据）
+local.properties
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
+key.properties
+
+# IDE 配置
+.idea/
+*.iml
+.vscode/
