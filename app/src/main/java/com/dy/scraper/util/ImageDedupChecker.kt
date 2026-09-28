@@ -9,21 +9,28 @@ object ImageDedupChecker {
     private const val EMOJI_MIN_SIZE = 300
     private const val PHASH_HAMMING_THRESHOLD = 10
 
-    private val COVER_KEYWORDS = listOf(
-        "cover", "thumb", "poster", "bg", "background", "banner"
+    private val COVER_PATTERNS = listOf(
+        Regex("[?&]cover="),
+        Regex("/cover/"),
+        Regex("video_cover"),
+        Regex("cover_image"),
     )
-    private val EMOJI_KEYWORDS = listOf(
-        "emoji", "sticker", "表情", "贴纸"
+    private val EMOJI_STICKER_PATTERNS = listOf(
+        Regex("emoticon"),
+        Regex("sticker"),
+        Regex("emoji"),
+        Regex("/obj/tos-cn-i-tsj2vxp0zn/"),
+        Regex("gif\\.douyinpic\\.com"),
     )
 
     fun isCoverUrl(url: String): Boolean {
         val lower = url.lowercase()
-        return COVER_KEYWORDS.any { it in lower }
+        return COVER_PATTERNS.any { it.containsMatchIn(lower) }
     }
 
     fun isEmojiStickerUrl(url: String): Boolean {
         val lower = url.lowercase()
-        return EMOJI_KEYWORDS.any { it in lower }
+        return EMOJI_STICKER_PATTERNS.any { it.containsMatchIn(lower) }
     }
 
     fun isEmojiByDimensions(file: File): Boolean {

@@ -191,13 +191,19 @@ class UrlProcessor(
             ctx.domVideoUrls + ctx.networkVideoUrls
         }
 
-        ctx.videoUrls = Downloader.deduplicateVideos(rawVideoUrls.distinct())
-            .filter { !it.startsWith("blob:") }
-            .filter { !Utils.isUiAsset(it) }
-            .filter { !Utils.isAudioUrl(it) }
+        val videoDeduped = Downloader.deduplicateVideos(rawVideoUrls.distinct())
+        val videoFiltered = videoDeduped
+            .filter {
+                if (it.startsWith("blob:")) { Logger.log("    [filter:blob] $it", "debug"); false }
+                else if (Utils.isUiAsset(it)) { Logger.log("    [filter:uiAsset] $it", "debug"); false }
+                else if (Utils.isAudioUrl(it)) { Logger.log("    [filter:audio] $it", "debug"); false }
+                else true
+            }
+        ctx.videoUrls = videoFiltered
 
         val videoSource = if (ctx.apiVideoUrls.isNotEmpty()) "API" else "DOM+网络"
-        Logger.log("  合并后视频URL: ${ctx.videoUrls.size} 个 (来源: $videoSource)")
+        val videoFilteredCount = videoDeduped.size - videoFiltered.size
+        Logger.log("  去重后视频URL: ${videoDeduped.size} 个 → 过滤掉 $videoFilteredCount 个 → 最终 ${ctx.videoUrls.size} 个 (来源: $videoSource)")
 
         // 图片 URL 合并
         val rawImageUrls = if (ctx.apiImageUrls.isNotEmpty()) {
@@ -208,14 +214,21 @@ class UrlProcessor(
             ctx.domImageUrls + ctx.networkImageUrls
         }
 
-        ctx.imageUrls = Downloader.sortImagesByQuality(rawImageUrls.distinct())
-            .filter { !it.startsWith("blob:") }
-            .filter { !Utils.isUiAsset(it) }
-            .filter { !ImageDedupChecker.isCoverUrl(it) }
-            .filter { !ImageDedupChecker.isEmojiStickerUrl(it) }
+        val imgQualitySorted = Downloader.sortImagesByQuality(rawImageUrls.distinct())
+        Logger.log("  图片质量排序完成: ${imgQualitySorted.size} 个")
+        val imgFiltered = imgQualitySorted
+            .filter {
+                if (it.startsWith("blob:")) { Logger.log("    [filter:blob] ${it.take(100)}", "debug"); false }
+                else if (Utils.isUiAsset(it)) { Logger.log("    [filter:uiAsset] ${it.take(100)}", "debug"); false }
+                else if (ImageDedupChecker.isCoverUrl(it)) { Logger.log("    [filter:isCover] ${it.take(100)}", "debug"); false }
+                else if (ImageDedupChecker.isEmojiStickerUrl(it)) { Logger.log("    [filter:isEmoji] ${it.take(100)}", "debug"); false }
+                else true
+            }
+        ctx.imageUrls = imgFiltered
 
         val imgSource = if (ctx.apiImageUrls.isNotEmpty()) "API/SSR" else "DOM+网络"
-        Logger.log("  合并后图片URL: ${ctx.imageUrls.size} 个 (来源: $imgSource)")
+        val imgFilteredCount = imgQualitySorted.size - imgFiltered.size
+        Logger.log("  合并后图片URL: $imgFilteredCount 个被过滤 → 最终 ${ctx.imageUrls.size} 个 (来源: $imgSource)")
     }
 
     // ── 数据库记录 ──
