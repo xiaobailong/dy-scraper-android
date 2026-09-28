@@ -149,7 +149,7 @@ for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') 
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
-set "APK_NAME=斗虫-v%V_NAME%.apk"
+set "APK_NAME=斗虫-v%V_NAME%_b%V_CODE%.apk"
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "%APK_NAME%" > nul
     set "APK_PATH=%CD%\%APK_NAME%"
@@ -308,7 +308,7 @@ if %BUILD_EXIT% neq 0 (
 )
 echo       构建成功。
 
-set "APK_NAME=斗虫-v%V_NAME%.apk"
+set "APK_NAME=斗虫-v%V_NAME%_b%V_CODE%.apk"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
@@ -462,14 +462,18 @@ REM ============================================
 :git_push
 set "_DS_PUSH_REF=%~1"
 set "_DS_PUSH_FORCE="
-if /i "%~2"=="force" set "_DS_PUSH_FORCE=-f"
+if /i "%~2"=="force" set "_DS_PUSH_FORCE=1"
 set "_DS_PUSH_N=0"
 
 :git_push_try
 set /a _DS_PUSH_N+=1
 if %_DS_PUSH_N%==1 echo       推送 %_DS_PUSH_REF% ...
 if %_DS_PUSH_N% gtr 1 echo       [重试 %_DS_PUSH_N%/3] 推送 %_DS_PUSH_REF% ...
-call git push origin %_DS_PUSH_REF% %_DS_PUSH_FORCE%
+if defined _DS_PUSH_FORCE (
+    call git push origin +refs/tags/%_DS_PUSH_REF%
+) else (
+    call git push origin %_DS_PUSH_REF%
+)
 if not errorlevel 1 exit /b 0
 if %_DS_PUSH_N% lss 3 (
     echo       [警告] 推送失败，3 秒后重试...
@@ -478,7 +482,7 @@ if %_DS_PUSH_N% lss 3 (
 )
 echo [错误] git push %_DS_PUSH_REF% 连续 3 次失败！
 echo        常见原因: 网络瞬断（Connection reset / timeout）、代理、22 端口被拦。
-echo        手工重试:            git push origin %_DS_PUSH_REF%
+echo        手工重试:            git push origin +refs/tags/%_DS_PUSH_REF%
 echo        改走 HTTPS（一次性）: gh auth setup-git ^&^& git remote set-url origin https://github.com/%GH_REPO%.git
 exit /b 1
 
