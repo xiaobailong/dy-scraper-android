@@ -7,12 +7,11 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
 
 object YoudaoFetcher {
 
     const val DEFAULT_YOUDAO_API =
-        "https://note.youdao.com/yws/api/personal/file/"
+        "https://note.youdao.com/yws/api/note/70f23df9766d959e890f02747415d2f4?sev=j1&editorType=1&unloginId=c6e838d2-5c51-045a-6067-49fa4b84b37f&editorVersion=new-json-editor&sec=v1"
     private const val PREFS_KEY_YOUDAO_URL = "youdao_api_url"
 
     private val client = OkHttpClient.Builder()
@@ -132,36 +131,23 @@ object YoudaoFetcher {
         }
     }
 
-    private val urlPattern: Pattern = Pattern.compile("https?://[^\\s]+")
-
     private fun extractUrls(content: String): List<String> {
-        val matcher = urlPattern.matcher(content)
-        val rawUrls = mutableListOf<String>()
-        while (matcher.find()) {
-            rawUrls.add(matcher.group())
-        }
-        val unique = LinkedHashSet(rawUrls)
-
+        val rawUrls = Utils.extractUrls(content)
         val result = mutableListOf<String>()
         var skippedYd = 0
         var skippedNoCom = 0
-        for (u in unique) {
-            var clean = u
-            clean = clean.replace(Regex("[\\u4e00-\\u9fff]+.*$"), "")
-            clean = clean.trim('`', '"', '\'')
-            clean = clean.trimEnd('.', ',', ';', ':', '!', '?', '）', ')', '】', ']', '}', '`', '"', '\'', '*', '_', '~')
-
-            if ("youdao.com" in clean) {
+        for (u in rawUrls) {
+            if ("youdao.com" in u) {
                 skippedYd++
-                Logger.d("YoudaoFetcher: skip youdao domain: $clean")
+                Logger.d("YoudaoFetcher: skip youdao domain: $u")
                 continue
             }
-            if (".com" !in clean) {
+            if (".com" !in u) {
                 skippedNoCom++
-                Logger.d("YoudaoFetcher: skip non-.com: $clean")
+                Logger.d("YoudaoFetcher: skip non-.com: $u")
                 continue
             }
-            result.add(Utils.normalizeUrl(clean))
+            result.add(Utils.normalizeUrl(u))
         }
 
         Logger.d(

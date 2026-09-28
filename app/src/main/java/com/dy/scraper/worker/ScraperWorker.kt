@@ -92,6 +92,7 @@ class ScraperWorker(
 
             val stats = ScrapeStats(urlTotal = newUrls.size)
             val processor = UrlProcessor(
+                context = applicationContext,
                 db = db,
                 md5Registry = md5Registry,
                 videoHashRegistry = videoHashRegistry,
@@ -143,6 +144,10 @@ class ScraperWorker(
     }
 
     private suspend fun filterProcessedUrls(urlList: List<String>): Pair<List<String>, Int> {
+        if (!AppConfig.isUrlDedupEnabled(applicationContext)) {
+            Logger.log("URL 去重已关闭，跳过已处理 URL 检查")
+            return Pair(urlList, 0)
+        }
         val processed = scrapeDao.getAllProcessedUrls().toSet()
         val skipped = scrapeDao.getAllSkippedUrls().toSet()
         val excluded = processed + skipped

@@ -6,7 +6,7 @@ import java.io.File
 
 object ImageDedupChecker {
 
-    private const val EMOJI_MIN_SIZE = 300
+    private const val EMOJI_MAX_SIZE = 400
     private const val PHASH_HAMMING_THRESHOLD = 10
 
     private val COVER_PATTERNS = listOf(
@@ -34,15 +34,19 @@ object ImageDedupChecker {
     }
 
     fun isEmojiByDimensions(file: File): Boolean {
+        if (file.extension.lowercase() != "gif") return false
         return try {
             val options = BitmapFactory.Options().apply {
                 inJustDecodeBounds = true
             }
             BitmapFactory.decodeFile(file.absolutePath, options)
-            val isEmoji = options.outWidth > 0 && options.outHeight > 0 &&
-                    (options.outWidth < EMOJI_MIN_SIZE || options.outHeight < EMOJI_MIN_SIZE)
+            val w = options.outWidth
+            val h = options.outHeight
+            if (w <= 0 || h <= 0) return false
+            val ratio = if (w < h) w.toDouble() / h else h.toDouble() / w
+            val isEmoji = ratio > 0.6 && maxOf(w, h) <= EMOJI_MAX_SIZE
             if (isEmoji) {
-                Logger.log("    [图片过滤] 表情包 ${file.name} (${options.outWidth}x${options.outHeight})", "debug")
+                Logger.log("    [图片过滤] 表情包 ${file.name} (${w}x${h})", "debug")
             }
             isEmoji
         } catch (_: Exception) {

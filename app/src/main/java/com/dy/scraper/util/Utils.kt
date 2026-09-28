@@ -128,4 +128,32 @@ object Utils {
         val matcher = pattern.matcher(url)
         return if (matcher.find()) matcher.group(1) else null
     }
+
+    /**
+     * 从文本中提取所有 URL（位置法）
+     *
+     * 找到所有 https?:// 前缀位置，相邻前缀之间截取为一个完整 URL。
+     * 解决了如下问题：
+     * 1. 一行多个 URL（空格/无分隔符均可）
+     * 2. 粘贴时无换行
+     * 3. 贪婪正则把两个紧挨的 URL 合并成一个
+     */
+    fun extractUrls(text: String): List<String> {
+        val prefixRegex = Regex("https?://")
+        val positions = prefixRegex.findAll(text).map { it.range.first }.toList()
+        if (positions.isEmpty()) return emptyList()
+
+        val result = mutableListOf<String>()
+        for (i in positions.indices) {
+            val start = positions[i]
+            val end = if (i + 1 < positions.size) positions[i + 1] else text.length
+            var url = text.substring(start, end)
+            url = url.replace(Regex("[\u4e00-\u9fff].*$"), "")
+            url = url.trimEnd('.', ',', ';', ':', '!', '?', '，', '。', '）', ')', '】', ']', '}', '"', '\'', '`', '*', '_', '~', ' ', '\t', '\r', '\n')
+            if (url.isNotEmpty() && url.startsWith("http")) {
+                result.add(url)
+            }
+        }
+        return result.distinct()
+    }
 }

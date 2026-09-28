@@ -19,8 +19,10 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.Logger
 import com.dy.scraper.util.RunMode
+import com.dy.scraper.util.Utils
 import com.dy.scraper.util.YoudaoFetcher
 import com.dy.scraper.worker.ScraperWorker
 import kotlinx.coroutines.launch
@@ -120,6 +122,10 @@ class MainActivity : AppCompatActivity() {
                     showModeSettingsDialog()
                     true
                 }
+                R.id.action_url_dedup_settings -> {
+                    showUrlDedupSettingsDialog()
+                    true
+                }
                 R.id.action_youdao_url_settings -> {
                     showYoudaoUrlSettingsDialog()
                     true
@@ -156,6 +162,30 @@ class MainActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle(R.string.settings_log_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showUrlDedupSettingsDialog() {
+        Logger.d("URL dedup settings dialog: opened")
+        val dialogView = layoutInflater.inflate(R.layout.dialog_url_dedup_settings, null)
+        val switchUrlDedup = dialogView.findViewById<SwitchCompat>(R.id.switchUrlDedup)
+
+        switchUrlDedup.isChecked = AppConfig.isUrlDedupEnabled(this)
+
+        switchUrlDedup.setOnCheckedChangeListener { _, isChecked ->
+            AppConfig.setUrlDedupEnabled(this, isChecked)
+            Logger.d("URL dedup settings dialog: url dedup changed to $isChecked")
+            Toast.makeText(
+                this,
+                if (isChecked) R.string.settings_url_dedup_on else R.string.settings_url_dedup_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_url_dedup_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
@@ -322,16 +352,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun parseUrlInput(): List<String> {
-        val urlRegex = Regex("""https?://[^\s，。；;,\u0000-\u001F\u007F]+""")
-        return etUrlInput.text.toString()
-            .lines()
-            .flatMap { line ->
-                val trimmed = line.trim()
-                if (trimmed.startsWith("#")) return@flatMap emptyList()
-                urlRegex.findAll(trimmed).map { it.value.trimEnd('.', ',', ';', '，', '。') }.toList()
-            }
-            .filter { it.isNotEmpty() }
-            .distinct()
+        return Utils.extractUrls(etUrlInput.text.toString())
     }
 
     private fun fetchYoudaoUrls() {

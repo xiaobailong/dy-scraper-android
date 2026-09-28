@@ -105,7 +105,7 @@ if not exist "version.properties" (
 )
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
-if "%GH_TAG%"=="" set "GH_TAG=v%V_NAME%"
+if "%GH_TAG%"=="" set "GH_TAG=v%V_NAME%-b%V_CODE%"
 if "%GH_TAG%"=="v" (
     echo [错误] 读不到 versionName，无法推断标签，请显式传入标签
     goto :fail

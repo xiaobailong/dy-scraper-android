@@ -1,5 +1,6 @@
 package com.dy.scraper.core
 
+import android.content.Context
 import com.dy.scraper.api.DouyinApiCollector
 import com.dy.scraper.data.AppDatabase
 import com.dy.scraper.data.entity.ScrapeRecord
@@ -17,6 +18,7 @@ import java.util.Date
 import java.util.Locale
 
 class UrlProcessor(
+    private val context: Context,
     private val db: AppDatabase,
     private val md5Registry: MutableSet<String>,
     private val videoHashRegistry: MutableMap<String, List<String>>,
@@ -158,12 +160,14 @@ class UrlProcessor(
 
     // ── 校验 ──
     private suspend fun validateUrl(finalUrl: String, lastFinalUrl: String?): Pair<Boolean, String> {
-        val existing = scrapeDao.getByFinalUrl(finalUrl)
-        if (existing != null) {
-            Logger.log("  ⚠️ 长链接重复（最终地址已被处理过），跳过")
-            Logger.log("     首次处理短链接: ${existing.shortUrl}")
-            Logger.log("     首次处理时间: ${existing.createTime}")
-            return Pair(false, "长链接重复（最终地址已被处理过）")
+        if (AppConfig.isUrlDedupEnabled(context)) {
+            val existing = scrapeDao.getByFinalUrl(finalUrl)
+            if (existing != null) {
+                Logger.log("  ⚠️ 长链接重复（最终地址已被处理过），跳过")
+                Logger.log("     首次处理短链接: ${existing.shortUrl}")
+                Logger.log("     首次处理时间: ${existing.createTime}")
+                return Pair(false, "长链接重复（最终地址已被处理过）")
+            }
         }
 
         if (lastFinalUrl != null && finalUrl == lastFinalUrl) {

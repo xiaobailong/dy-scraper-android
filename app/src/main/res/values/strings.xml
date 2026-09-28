@@ -5,6 +5,7 @@
     <string name="menu_more">更多</string>
     <string name="settings_log">日志</string>
     <string name="settings_mode">运行模式</string>
+    <string name="settings_url_dedup">URL去重</string>
     <string name="settings_youdao_url">有道文档地址</string>
     <string name="settings_about">关于</string>
     <string name="settings_log_title">日志设置</string>
@@ -19,6 +20,12 @@
     <string name="mode_youdao">有道模式</string>
     <string name="mode_switch_toast">已切换到：%1$s</string>
     <string name="log_file_not_created">（当前未创建）</string>
+
+    <string name="settings_url_dedup_title">URL去重设置</string>
+    <string name="settings_url_dedup_label">URL去重</string>
+    <string name="settings_url_dedup_hint">关闭后不检查URL是否已处理，允许重复抓取（调试阶段可关闭）；设置会保存，重启应用后依然生效</string>
+    <string name="settings_url_dedup_on">URL去重已开启</string>
+    <string name="settings_url_dedup_off">URL去重已关闭</string>
 
     <string name="settings_youdao_url_title">有道文档地址</string>
     <string name="settings_youdao_url_hint">请输入有道云笔记文档 API 地址</string>

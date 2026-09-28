@@ -5,6 +5,9 @@ import java.io.File
 
 object AppConfig {
 
+    const val PREFS_NAME = "dy_scraper_settings"
+    const val KEY_URL_DEDUP_ENABLED = "url_dedup_enabled"
+
     // ── 存储路径 ──
     var downloadVideoDir: File = File("/storage/emulated/0/Download/dy-scraper/videos")
     var downloadImageDir: File = File("/storage/emulated/0/Download/dy-scraper/images")
@@ -25,11 +28,12 @@ object AppConfig {
 
     // ── UI 素材域名（用于过滤非内容资源） ──
     val UI_ASSET_DOMAINS = setOf(
-        "p3-pc-sign.douyinpic.com",
-        "p3-pc.douyinpic.com",
-        "p9-pc-sign.douyinpic.com",
-        "p3-sign.douyinpic.com",
-        "p9-sign.douyinpic.com",
+        "douyinstatic.com",
+        "byteeffecttos.com",
+        "byteimg.com",
+        "bytescm.com",
+        "baidu.com",
+        "p-pc-weboff.byteimg.com",
     )
 
     // ── User-Agent（桌面 Chrome，匹配 Python 原版） ──
@@ -54,5 +58,24 @@ object AppConfig {
     fun ensureDirs() {
         listOf(downloadVideoDir, downloadImageDir, resultDir)
             .forEach { it.mkdirs() }
+    }
+
+    fun isUrlDedupEnabled(context: Context): Boolean {
+        return try {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_URL_DEDUP_ENABLED, true)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    fun setUrlDedupEnabled(context: Context, enabled: Boolean) {
+        try {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_URL_DEDUP_ENABLED, enabled)
+                .apply()
+        } catch (_: Exception) {
+        }
     }
 }

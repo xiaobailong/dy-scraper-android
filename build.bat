@@ -176,8 +176,8 @@ if errorlevel 1 (
 echo       读取版本信息...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
-set "TAG=v%V_NAME%"
-echo       版本: %TAG% (code=%V_CODE%)
+set "TAG=v%V_NAME%-b%V_CODE%"
+echo       版本: %TAG% (name=%V_NAME%, code=%V_CODE%)
 
 echo       提交版本变更...
 call git add version.properties app/build.gradle.kts
@@ -293,8 +293,8 @@ echo       完成。
 echo [4/6] 读取版本信息...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
-set "TAG=v%V_NAME%"
-echo       版本: %TAG% (code=%V_CODE%)
+set "TAG=v%V_NAME%-b%V_CODE%"
+echo       版本: %TAG% (name=%V_NAME%, code=%V_CODE%)
 
 echo [5/6] 编译APK...
 call "D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" clean assembleDebug --no-daemon --console=plain
@@ -507,19 +507,22 @@ if errorlevel 1 (
         --notes "dy-scraper-android %TAG% (build %V_CODE%)" ^
         --repo "%GH_REPO%"
 ) else (
-    echo       Release %TAG% 已存在，更新说明并覆盖上传 APK...
-    echo       清理旧的 APK 资产...
+    echo       Release %TAG% 已存在，清理旧 APK 资产后重新上传...
     for /f "delims=" %%a in ('"%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json assets --template "{{range .assets}}{{.name}}{{\n}}{{end}}" 2^>nul') do (
         echo %%a | findstr /i /r "\.apk$" >nul 2>&1
         if not errorlevel 1 (
             echo         - 删除旧资产: %%a
-            "%GH_EXE%" release delete-asset --yes --repo "%GH_REPO%" "%TAG%" -- "%%a" >nul 2>&1
+            "%GH_EXE%" release delete-asset --yes --repo "%GH_REPO%" "%TAG%" -- "%%a"
+            if errorlevel 1 (
+                echo         [警告] 删除失败: %%a
+            )
         )
     )
     "%GH_EXE%" release edit "%TAG%" ^
         --title "%TAG%" ^
         --notes "dy-scraper-android %TAG% (build %V_CODE%)" ^
         --repo "%GH_REPO%" >nul 2>&1
+    echo       上传新 APK...
     "%GH_EXE%" release upload "%TAG%" "%APK_PATH%" --repo "%GH_REPO%"
 )
 if errorlevel 1 (
