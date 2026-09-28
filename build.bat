@@ -45,10 +45,10 @@ REM        build clean     (清理构建产物)
 REM        build release   (同双击，构建+Git推送+GitHub Release)
 REM ============================================
 
-set "JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle"
+set "JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle"
 set "ANDROID_HOME=D:\Tools\DevTools\Android\Sdk"
 set "ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk"
-set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
+set "PATH=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
 set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
 set "GH_REPO=xiaobailong/dy-scraper-android"
 set "JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8"
