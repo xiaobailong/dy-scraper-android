@@ -404,10 +404,7 @@ for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') 
 set /a NEW_CODE=%OLD_CODE% + 1
 echo       版本递增: versionCode %OLD_CODE% -^> %NEW_CODE%
 
-powershell -NoProfile -Command ^
-    "$ver = Get-Content 'version.properties' -Raw; ^
-     $ver = $ver -replace 'versionCode=\d+', 'versionCode=%NEW_CODE%'; ^
-     [System.IO.File]::WriteAllText('version.properties', $ver, [System.Text.UTF8Encoding]::new(`$true))"
+powershell -NoProfile -Command "$ver = Get-Content 'version.properties' -Raw; $ver = $ver -replace 'versionCode=\d+', 'versionCode=%NEW_CODE%'; [System.IO.File]::WriteAllText('version.properties', $ver, [System.Text.UTF8Encoding]::new($true))"
 
 if %ERRORLEVEL% neq 0 (
     exit /b 1
@@ -417,11 +414,7 @@ echo       同步版本到 build.gradle.kts...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
 
-powershell -NoProfile -Command ^
-    "$g = Get-Content 'app\build.gradle.kts' -Raw; ^
-     $g = $g -replace '(?m)(^\s*versionCode\s*=\s*)\d+', '${1}%V_CODE%'; ^
-     $g = $g -replace '(?m)(^\s*versionName\s*=\s*)\"[^\"]*\"', '${1}\"%V_NAME%\"'; ^
-     [System.IO.File]::WriteAllText('app\build.gradle.kts', $g, [System.Text.UTF8Encoding]::new(`$true))"
+powershell -NoProfile -Command "$g = Get-Content 'app\build.gradle.kts' -Raw; $g = $g -replace '(?m)(^\s*versionCode\s*=\s*)\d+', '${1}%V_CODE%'; $g = $g -replace '(?m)(^\s*versionName\s*=\s*)\""[^\""]*\""', '${1}\""%V_NAME%\""'; [System.IO.File]::WriteAllText('app\build.gradle.kts', $g, [System.Text.UTF8Encoding]::new($true))"
 
 if %ERRORLEVEL% neq 0 (
     exit /b 1
