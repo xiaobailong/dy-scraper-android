@@ -229,10 +229,9 @@ object Downloader {
             }
         }
 
-        return Pair(videoUrls.distinct(), imageUrls.distinct())
-            }.also { (v, i) ->
-                Logger.log("  网络请求提取: ${v.size} 视频 + ${i.size} 图片 (从 ${collectedRequests.size} 个请求中)", "debug")
-            }
+        val result = Pair(videoUrls.distinct(), imageUrls.distinct())
+        Logger.log("  网络请求提取: ${result.first.size} 视频 + ${result.second.size} 图片 (从 ${collectedRequests.size} 个请求中)", "debug")
+        return result
     }
 
     /**
