@@ -32,8 +32,12 @@ object ImageDedupChecker {
                 inJustDecodeBounds = true
             }
             BitmapFactory.decodeFile(file.absolutePath, options)
-            options.outWidth > 0 && options.outHeight > 0 &&
+            val isEmoji = options.outWidth > 0 && options.outHeight > 0 &&
                     (options.outWidth < EMOJI_MIN_SIZE || options.outHeight < EMOJI_MIN_SIZE)
+            if (isEmoji) {
+                Logger.log("    [图片过滤] 表情包 ${file.name} (${options.outWidth}x${options.outHeight})", "debug")
+            }
+            isEmoji
         } catch (_: Exception) {
             false
         }
@@ -47,7 +51,7 @@ object ImageDedupChecker {
                 )
             }
             val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
-                ?: return null
+                ?: return null.also { Logger.d("ImageDedup: computePHash failed to decode ${file.name}", "debug") }
             val scaled = Bitmap.createScaledBitmap(bitmap, 8, 8, true)
             bitmap.recycle()
 
@@ -109,8 +113,10 @@ object ImageDedupChecker {
                 // 保留较大的文件
                 if (currentFile.length() >= existingFile.length()) {
                     Utils.safeDelete(existingFile)
+                    Logger.log("    [图片去重] pHash匹配，保留 ${currentFile.name} (${currentFile.length()} > ${existingFile.length()})", "debug")
                 } else {
                     Utils.safeDelete(currentFile)
+                    Logger.log("    [图片去重] pHash匹配，删除 ${currentFile.name} (${currentFile.length()} < ${existingFile.length()})", "debug")
                     removed = true
                 }
                 break

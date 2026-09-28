@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity() {
         setupLogger()
         applyMode(RunMode.fromPrefs(this))
 
-        Logger.logSection("抖音网页内容抓取工具 (Android WebView)")
+        Logger.logSection("斗虫 (Android WebView)")
         Logger.d("========== onCreate finished ==========")
     }
 
@@ -118,6 +118,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 R.id.action_mode_settings -> {
                     showModeSettingsDialog()
+                    true
+                }
+                R.id.action_youdao_url_settings -> {
+                    showYoudaoUrlSettingsDialog()
                     true
                 }
                 R.id.action_about -> {
@@ -192,6 +196,32 @@ class MainActivity : AppCompatActivity() {
                     ).show()
                     Logger.d("Mode switched to: $label")
                 }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun showYoudaoUrlSettingsDialog() {
+        Logger.d("Youdao URL settings dialog: opened")
+        val dialogView = layoutInflater.inflate(R.layout.dialog_youdao_url, null)
+        val etYoudaoUrl = dialogView.findViewById<EditText>(R.id.etYoudaoUrl)
+
+        val currentUrl = YoudaoFetcher.getApiUrl(this)
+        etYoudaoUrl.setText(currentUrl)
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_youdao_url_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val newUrl = etYoudaoUrl.text.toString().trim()
+                YoudaoFetcher.saveApiUrl(this, newUrl)
+                val savedUrl = YoudaoFetcher.getApiUrl(this)
+                Toast.makeText(
+                    this,
+                    getString(R.string.settings_youdao_url_saved) + ": " + savedUrl,
+                    Toast.LENGTH_SHORT
+                ).show()
+                Logger.d("Youdao URL settings dialog: saved API URL = $savedUrl")
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
@@ -273,7 +303,7 @@ class MainActivity : AppCompatActivity() {
         btnLocalStart.setOnClickListener {
             val urls = parseUrlInput()
             if (urls.isEmpty()) {
-                Toast.makeText(this, "请输入至少一个抖音链接", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "请输入至少一个链接", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
             startScraper(urls)
@@ -300,6 +330,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun fetchYoudaoUrls() {
         Logger.logSection("从有道获取URL")
+        val apiUrl = YoudaoFetcher.getApiUrl(this)
+        Logger.log("  有道API地址: $apiUrl")
         Toast.makeText(this, R.string.label_youdao_fetching, Toast.LENGTH_SHORT).show()
         tvYoudaoLabel.visibility = View.VISIBLE
         tvYoudaoLabel.text = getString(R.string.label_youdao_fetching)
@@ -307,14 +339,16 @@ class MainActivity : AppCompatActivity() {
         llYoudaoButtons.visibility = View.GONE
 
         lifecycleScope.launch {
-            val result = YoudaoFetcher.fetchUrls()
+            val result = YoudaoFetcher.fetchUrls(this@MainActivity)
             if (result.error != null) {
+                Logger.log("  有道获取失败: ${result.error}", "error")
                 tvYoudaoLabel.text = getString(R.string.label_youdao_error, result.error)
                 tvYoudaoUrlList.visibility = View.GONE
                 llYoudaoButtons.visibility = View.GONE
                 return@launch
             }
             if (result.urls.isEmpty()) {
+                Logger.log("  有道返回空URL列表")
                 tvYoudaoLabel.text = getString(R.string.label_youdao_empty)
                 tvYoudaoUrlList.visibility = View.GONE
                 llYoudaoButtons.visibility = View.GONE
@@ -322,6 +356,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             youdaoUrls = result.urls
+            Logger.log("  有道获取成功，共 ${result.urls.size} 个URL")
             tvYoudaoLabel.text = getString(R.string.label_url_list, result.urls.size)
             tvYoudaoUrlList.text = result.urls.joinToString("\n")
             tvYoudaoUrlList.visibility = View.VISIBLE
@@ -335,6 +370,7 @@ class MainActivity : AppCompatActivity() {
         }
         Logger.logSection("启动抓取任务")
         Logger.log("启动抓取任务，共 ${urls.size} 个 URL")
+        Logger.log("  当前模式: ${currentMode.key}")
         urls.forEach { Logger.log("  $it") }
 
         val constraints = Constraints.Builder()
@@ -358,6 +394,7 @@ class MainActivity : AppCompatActivity() {
                 workRequest
             )
 
+        Logger.d("WorkManager task enqueued, id=${workRequest.id}")
         updateStartStopButtons(running = true)
 
         lifecycleScope.launch {
@@ -372,6 +409,7 @@ class MainActivity : AppCompatActivity() {
                         Logger.log("进度: $done/$total ($pct%)")
 
                         if (workInfo.state.isFinished) {
+                            Logger.log("WorkManager任务完成, state=${workInfo.state}")
                             updateStartStopButtons(running = false)
                         }
                     }
@@ -384,10 +422,12 @@ class MainActivity : AppCompatActivity() {
         Logger.log("取消所有 dy_scraper 任务...")
         WorkManager.getInstance(this).cancelUniqueWork("dy_scraper_work")
         WorkManager.getInstance(this).cancelAllWorkByTag("dy_scraper")
+        Logger.log("  所有抓取任务已取消")
         updateStartStopButtons(running = false)
     }
 
     private fun updateStartStopButtons(running: Boolean) {
+        Logger.d("updateStartStopButtons: running=$running, mode=${currentMode.key}")
         when (currentMode) {
             RunMode.LOCAL -> {
                 btnLocalStart.isEnabled = !running

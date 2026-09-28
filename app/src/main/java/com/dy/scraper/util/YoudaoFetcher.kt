@@ -1,5 +1,6 @@
 package com.dy.scraper.util
 
+import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -10,8 +11,9 @@ import java.util.regex.Pattern
 
 object YoudaoFetcher {
 
-    private const val DEFAULT_YOUDAO_API =
+    const val DEFAULT_YOUDAO_API =
         "https://note.youdao.com/yws/api/personal/file/"
+    private const val PREFS_KEY_YOUDAO_URL = "youdao_api_url"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -24,7 +26,24 @@ object YoudaoFetcher {
         val error: String? = null,
     )
 
-    suspend fun fetchUrls(apiUrl: String = DEFAULT_YOUDAO_API): FetchResult =
+    fun getApiUrl(context: Context): String {
+        val url = context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREFS_KEY_YOUDAO_URL, "") ?: ""
+        return url.ifBlank { DEFAULT_YOUDAO_API }
+    }
+
+    fun saveApiUrl(context: Context, url: String) {
+        context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PREFS_KEY_YOUDAO_URL, url)
+            .apply()
+        Logger.d("YoudaoFetcher: saved API URL = $url")
+    }
+
+    suspend fun fetchUrls(context: Context): FetchResult =
+        fetchUrlsInternal(getApiUrl(context))
+
+    private suspend fun fetchUrlsInternal(apiUrl: String): FetchResult =
         withContext(Dispatchers.IO) {
             try {
                 Logger.d("YoudaoFetcher: fetching from $apiUrl")

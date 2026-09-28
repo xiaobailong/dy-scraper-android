@@ -100,6 +100,7 @@ class UrlProcessor(
         Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
 
         // ── 6. 合并 URL ──
+        Logger.log("[6a] 合并URL...")
         mergeUrls(ctx)
         ctx.pushStage("merge_urls")
 
@@ -123,6 +124,9 @@ class UrlProcessor(
             md5Registry = md5Registry,
             videoHashRegistry = videoHashRegistry,
         )
+        val videoDone = ctx.videoResults.count { it.status == "downloaded" }
+        val videoSkip = ctx.videoResults.size - videoDone
+        Logger.log("  视频下载完成: $videoDone 成功, $videoSkip 跳过/失败")
         ctx.pushStage("download_video")
 
         Logger.log("  图片目录: ${AppConfig.downloadImageDir.absolutePath}")
@@ -131,6 +135,9 @@ class UrlProcessor(
             maxWorkers = AppConfig.MAX_IMAGE_WORKERS,
             md5Registry = md5Registry,
         )
+        val imgDone = ctx.imageResults.count { it.status == "downloaded" }
+        val imgSkip = ctx.imageResults.size - imgDone
+        Logger.log("  图片下载完成: $imgDone 成功, $imgSkip 跳过/失败")
         ctx.pushStage("download_image")
 
         // ── 8. 保存结果 ──
@@ -189,6 +196,9 @@ class UrlProcessor(
             .filter { !Utils.isUiAsset(it) }
             .filter { !Utils.isAudioUrl(it) }
 
+        val videoSource = if (ctx.apiVideoUrls.isNotEmpty()) "API" else "DOM+网络"
+        Logger.log("  合并后视频URL: ${ctx.videoUrls.size} 个 (来源: $videoSource)")
+
         // 图片 URL 合并
         val rawImageUrls = if (ctx.apiImageUrls.isNotEmpty()) {
             Logger.log("  API/SSR获取到 ${ctx.apiImageUrls.size} 个图片链接，优先使用")
@@ -203,6 +213,9 @@ class UrlProcessor(
             .filter { !Utils.isUiAsset(it) }
             .filter { !ImageDedupChecker.isCoverUrl(it) }
             .filter { !ImageDedupChecker.isEmojiStickerUrl(it) }
+
+        val imgSource = if (ctx.apiImageUrls.isNotEmpty()) "API/SSR" else "DOM+网络"
+        Logger.log("  合并后图片URL: ${ctx.imageUrls.size} 个 (来源: $imgSource)")
     }
 
     // ── 数据库记录 ──
@@ -223,7 +236,7 @@ class UrlProcessor(
             scrapeDao.insertUrlMapping(
                 UrlMapping(finalUrl = finalUrl, shortUrl = normalizedUrl, createTime = now())
             )
-            Logger.log("  URL已记录到数据库")
+            Logger.log("  URL已记录到数据库, 作者=${ctx.author}, 标题=${ctx.title.take(30)}")
         } else if (ctx.hasMediaUrls) {
             scrapeDao.insertSkipped(
                 SkippedRecord(
@@ -235,7 +248,7 @@ class UrlProcessor(
                     createTime = now()
                 )
             )
-            Logger.log("  URL记录到跳过表")
+            Logger.log("  URL记录到跳过表 (所有文件被跳过)")
         }
     }
 

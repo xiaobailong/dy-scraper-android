@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">抖音抓取工具</string>
+    <string name="app_name">斗虫</string>
 
     <string name="menu_more">更多</string>
     <string name="settings_log">日志</string>
     <string name="settings_mode">运行模式</string>
+    <string name="settings_youdao_url">有道文档地址</string>
     <string name="settings_about">关于</string>
     <string name="settings_log_title">日志设置</string>
     <string name="settings_log_output">日志输出</string>
@@ -18,6 +19,10 @@
     <string name="mode_youdao">有道模式</string>
     <string name="mode_switch_toast">已切换到：%1$s</string>
     <string name="log_file_not_created">（当前未创建）</string>
+
+    <string name="settings_youdao_url_title">有道文档地址</string>
+    <string name="settings_youdao_url_hint">请输入有道云笔记文档 API 地址</string>
+    <string name="settings_youdao_url_saved">有道文档地址已保存</string>
 
     <string name="about_title">关于</string>
     <string name="about_version_line">v%1$s (build %2$d)</string>
@@ -34,7 +39,7 @@
     <string name="btn_save_draft">暂存</string>
     <string name="draft_saved">已暂存</string>
     <string name="btn_fetch_youdao">获取有道URL</string>
-    <string name="hint_url_input">请粘贴抖音链接，每行一个\ne.g. https://www.douyin.com/video/xxx</string>
+    <string name="hint_url_input">请粘贴链接，每行一个\ne.g. https://www.douyin.com/video/xxx</string>
     <string name="label_url_list">提取到的URL（共%1$d个）</string>
     <string name="label_youdao_fetching">正在从有道获取URL…</string>
     <string name="label_youdao_empty">未获取到URL</string>

@@ -55,6 +55,21 @@ class WebViewManager(private val context: Context) {
                 Logger.log("  WebView 开始加载: ${url.take(80)}...", "debug")
             }
 
+            // 反检测脚本注入：隐藏 WebView 特征，防止被抖音识别为自动化工具
+            // 对应 Python Playwright 的 page.add_init_script()
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                super.onPageCommitVisible(view, url)
+                view.evaluateJavascript("""
+                    (function() {
+                        Object.defineProperty(navigator, 'webdriver', { get: function() { return false; } });
+                        Object.defineProperty(navigator, 'plugins', { get: function() { return [1, 2, 3, 4, 5]; } });
+                        Object.defineProperty(navigator, 'languages', { get: function() { return ['zh-CN', 'zh', 'en']; } });
+                    })();
+                """.trimIndent()) {
+                    Logger.log("  反检测脚本注入完成", "debug")
+                }
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
                 finalUrl = url
@@ -104,7 +119,7 @@ class WebViewManager(private val context: Context) {
         collectedRequests.clear()
         detailResponses.clear()
 
-        return withContext(Dispatchers.Main) {
+        val result = withContext(Dispatchers.Main) {
             webView.loadUrl(url)
             try {
                 withTimeout(AppConfig.PAGE_LOAD_TIMEOUT_MS) {
@@ -115,23 +130,31 @@ class WebViewManager(private val context: Context) {
                 false
             }
         }
+
+        Logger.log("  收集到 ${collectedRequests.size} 个网络请求", "debug")
+        Logger.log("  拦截到 ${detailResponses.size} 个详情API响应", "debug")
+        return result
     }
 
     fun getFinalUrl(): String = finalUrl
 
     // ── JS 执行 ──
     suspend fun evaluateJavascript(script: String): String {
-        return withContext(Dispatchers.Main) {
+        val startTime = System.currentTimeMillis()
+        val result = withContext(Dispatchers.Main) {
             val deferred = CompletableDeferred<String>()
             webView.evaluateJavascript(script) { result ->
                 deferred.complete(result ?: "null")
             }
             deferred.await()
         }
+        Logger.log("  JS执行耗时: ${System.currentTimeMillis() - startTime}ms, 结果长度: ${result.length}", "debug")
+        return result
     }
 
     // ── 等待页面渲染 ──
     suspend fun waitForRender() {
+        Logger.log("  等待页面渲染 (最多${AppConfig.RENDER_WAIT_MS}ms)...")
         try {
             withTimeout(AppConfig.RENDER_WAIT_MS) {
                 // 等待 video 元素出现或超时
@@ -153,6 +176,7 @@ class WebViewManager(private val context: Context) {
 
     // ── 资源清理 ──
     fun destroy() {
+        Logger.log("[WebView] 销毁 WebView 实例")
         webView.apply {
             stopLoading()
             clearHistory()

@@ -36,11 +36,12 @@ class ScraperWorker(
 
     override suspend fun doWork(): Result {
         Logger.log("=".repeat(60))
-        Logger.log("  抖音网页内容抓取工具 (Android WebView)")
+        Logger.log("  斗虫 (Android WebView)")
         Logger.log("=".repeat(60))
 
         // ── 前台服务通知 ──
         setForeground(createForegroundInfo())
+        Logger.log("  前台通知已设置, notificationId=${ScraperApp.NOTIFICATION_ID}")
 
         try {
             // ── 1. 准备环境 ──
@@ -119,6 +120,13 @@ class ScraperWorker(
             stats.skippedUrlCount = skippedCount
             stats.printFinalSummary()
 
+            Logger.log("")
+            Logger.log("  抓取任务完成!")
+            Logger.log("    成功: ${stats.successCount} 页")
+            Logger.log("    跳过: ${stats.skippedPageCount} 页")
+            Logger.log("    失败: ${stats.failedCount} 页")
+            Logger.log("    MD5注册表: ${md5Registry.size} 个文件")
+
             // ── 7. 清理 ──
             withContext(Dispatchers.Main) {
                 wvm.destroy()
@@ -165,12 +173,12 @@ class ScraperWorker(
                 // 首次运行时创建示例文件
                 urlsFile.parentFile?.mkdirs()
                 urlsFile.writeText(
-                    "# 抖音 URL 列表，每行一个\n" +
+                    "# URL 列表，每行一个\n" +
                     "# 示例:\n" +
                     "# https://www.douyin.com/video/xxx\n" +
                     "# https://www.douyin.com/note/xxx\n"
                 )
-                Logger.log("已在 ${urlsFile.absolutePath} 创建 URL 列表文件，请填入要抓取的抖音链接")
+                Logger.log("已在 ${urlsFile.absolutePath} 创建 URL 列表文件，请填入要抓取的链接")
                 emptyList()
             }
         } catch (e: Exception) {
@@ -201,8 +209,8 @@ class ScraperWorker(
             applicationContext,
             ScraperApp.CHANNEL_ID
         )
-            .setContentTitle("抖音抓取运行中")
-            .setContentText("正在抓取抖音内容...")
+            .setContentTitle("斗虫运行中")
+            .setContentText("正在抓取内容...")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setOngoing(true)
             .addAction(android.R.drawable.ic_delete, "取消", cancelPendingIntent)

@@ -53,7 +53,7 @@ object Logger {
         val sdk = android.os.Build.VERSION.SDK_INT
         val model = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
 
-        sb.append("=== dy-scraper-android v${getVersionName(appCtx)} ===\n")
+        sb.append("=== 斗虫 v${getVersionName(appCtx)} ===\n")
         sb.append("=== SDK: $sdk | Device: $model ===\n")
 
         if (enabled) {

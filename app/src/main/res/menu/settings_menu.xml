@@ -7,6 +7,9 @@
         android:id="@+id/action_mode_settings"
         android:title="@string/settings_mode" />
     <item
+        android:id="@+id/action_youdao_url_settings"
+        android:title="@string/settings_youdao_url" />
+    <item
         android:id="@+id/action_about"
         android:title="@string/settings_about" />
 </menu>

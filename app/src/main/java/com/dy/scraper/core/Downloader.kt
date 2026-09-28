@@ -230,6 +230,9 @@ object Downloader {
         }
 
         return Pair(videoUrls.distinct(), imageUrls.distinct())
+            }.also { (v, i) ->
+                Logger.log("  网络请求提取: ${v.size} 视频 + ${i.size} 图片 (从 ${collectedRequests.size} 个请求中)", "debug")
+            }
     }
 
     /**
@@ -244,7 +247,9 @@ object Downloader {
             val key = url.substringBefore("?")
             map[key] = url
         }
-        return map.values.toList()
+        val result = map.values.toList()
+        Logger.log("  视频URL去重: ${urls.size} → ${result.size}", "debug")
+        return result
     }
 
     /**
@@ -253,9 +258,11 @@ object Downloader {
     fun sortImagesByQuality(urls: List<String>): List<String> {
         // 简单策略：webp/png 优先于 jpg
         val priority = mapOf("webp" to 3, "png" to 2, "jpeg" to 1, "jpg" to 0)
-        return urls.sortedByDescending { url ->
+        val result = urls.sortedByDescending { url ->
             val ext = url.substringBefore("?").substringAfterLast(".").lowercase()
             priority[ext] ?: 0
         }
+        Logger.log("  图片质量排序完成: ${result.size} 个", "debug")
+        return result
     }
 }

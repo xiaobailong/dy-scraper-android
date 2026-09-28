@@ -32,9 +32,9 @@ object AppConfig {
         "p9-sign.douyinpic.com",
     )
 
-    // ── User-Agent ──
-    const val USER_AGENT = "Mozilla/5.0 (Linux; Android 13; Pixel 7) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    // ── User-Agent（桌面 Chrome，匹配 Python 原版） ──
+    const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
     // ── 抖音 API 路径特征 ──
     val DETAIL_API_PATTERNS = listOf(

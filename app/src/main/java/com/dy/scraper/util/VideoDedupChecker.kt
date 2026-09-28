@@ -8,7 +8,10 @@ object VideoDedupChecker {
 
     fun scanExisting(videoDir: File): Map<String, List<String>> {
         val registry = mutableMapOf<String, List<String>>()
-        if (!videoDir.exists()) return registry
+        if (!videoDir.exists()) {
+            Logger.d("VideoDedup: scanExisting, directory not found: ${videoDir.absolutePath}")
+            return registry
+        }
 
         videoDir.listFiles()?.forEach { file ->
             if (file.isFile && isVideoFile(file)) {
@@ -18,6 +21,7 @@ object VideoDedupChecker {
                 }
             }
         }
+        Logger.d("VideoDedup: scanExisting found ${registry.size} video files in ${videoDir.absolutePath}")
         return registry
     }
 
@@ -61,14 +65,16 @@ object VideoDedupChecker {
                 currentFingerprint[1] == existingFingerprint[1]) {
                 // 完全相同，保留较大的
                 val existingFile = File(currentFile.parent, name)
-                if (currentFile.length() >= (existingFile.length().takeIf { existingFile.exists() } ?: 0L)) {
+                val kept = if (currentFile.length() >= (existingFile.length().takeIf { existingFile.exists() } ?: 0L)) {
                     Utils.safeDelete(existingFile)
                     registry.remove(name)
+                    currentFile.name
                 } else {
                     Utils.safeDelete(currentFile)
-                    return true
+                    name
                 }
-                break
+                Logger.d("VideoDedup: fingerprint match, kept $kept (${currentFile.length()} vs ${existingFile.length()})")
+                return currentFile.name != kept
             }
         }
         // 加入注册表
