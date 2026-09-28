@@ -144,12 +144,16 @@ if %BUILD_EXIT% neq 0 (
 echo ============================================
 echo  构建成功！
 echo ============================================
+rem 读取版本号（用于APK文件命名）
+for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
+for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
+set "APK_NAME=斗虫-v%V_NAME%.apk"
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
-    copy /y "%%f" "." > nul
+    copy /y "%%f" "%APK_NAME%" > nul
     set "APK_PATH=%%f"
-    echo  APK: %%~nxf  ^(%%~zf bytes^)
+    echo  APK: %APK_NAME%  ^(%%~zf bytes^)
 )
 if "%APK_PATH%"=="" (
     echo [错误] 未找到 APK 文件！
