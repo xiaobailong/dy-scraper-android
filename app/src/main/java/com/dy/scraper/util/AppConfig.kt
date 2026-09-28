@@ -6,9 +6,9 @@ import java.io.File
 object AppConfig {
 
     // ── 存储路径 ──
-    var downloadVideoDir: File = File("/storage/emulated/0/Download/douyin/videos")
-    var downloadImageDir: File = File("/storage/emulated/0/Download/douyin/images")
-    var resultDir: File = File("/storage/emulated/0/Download/douyin/results")
+    var downloadVideoDir: File = File("/storage/emulated/0/Download/dy-scraper/videos")
+    var downloadImageDir: File = File("/storage/emulated/0/Download/dy-scraper/images")
+    var resultDir: File = File("/storage/emulated/0/Download/dy-scraper/results")
 
     // ── 文件大小限制 ──
     const val MIN_FILE_SIZE: Long = 10 * 1024          // 10KB
@@ -44,8 +44,8 @@ object AppConfig {
     )
 
     fun initDirs(context: Context) {
-        val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
-        val root = File(baseDir, "douyin")
+        val root = File(android.os.Environment.getExternalStoragePublicDirectory(
+            android.os.Environment.DIRECTORY_DOWNLOADS), "dy-scraper")
         downloadVideoDir = File(root, "videos").also { it.mkdirs() }
         downloadImageDir = File(root, "images").also { it.mkdirs() }
         resultDir = File(root, "results").also { it.mkdirs() }
