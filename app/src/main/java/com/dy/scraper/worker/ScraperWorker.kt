@@ -187,7 +187,7 @@ class ScraperWorker(
         }
     }
 
-    private fun updateProgress(pct: Int, total: Int, current: Int, status: String) {
+    private suspend fun updateProgress(pct: Int, total: Int, current: Int, status: String) {
         setProgress(
             workDataOf(
                 "progress_pct" to pct,

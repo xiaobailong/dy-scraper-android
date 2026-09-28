@@ -40,6 +40,13 @@ class ScrapeStats(
     var urlsWithDownloads: Int = 0
     var skippedUrlCount: Int = 0
 
+    val successCount: Int
+        get() = urlsWithDownloads
+    val skippedPageCount: Int
+        get() = skippedUrlCount
+    val failedCount: Int
+        get() = video.failed + image.failed
+
     fun accumulatePage(ctx: PageContext) {
         video.accumulateResults(ctx.videoResults)
         image.accumulateResults(ctx.imageResults)

@@ -45,13 +45,15 @@ object ImageDedupChecker {
 
     fun computePHash(file: File): String? {
         return try {
+            val decodeOptions = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
             val options = BitmapFactory.Options().apply {
-                inSampleSize = calculateInSampleSize(
-                    BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inJustDecodeBounds = true })
-                )
+                inSampleSize = calculateInSampleSize(decodeOptions)
             }
             val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
-                ?: return null.also { Logger.d("ImageDedup: computePHash failed to decode ${file.name}", "debug") }
+                ?: return null.also { Logger.d("ImageDedup: computePHash failed to decode ${file.name}") }
             val scaled = Bitmap.createScaledBitmap(bitmap, 8, 8, true)
             bitmap.recycle()
 

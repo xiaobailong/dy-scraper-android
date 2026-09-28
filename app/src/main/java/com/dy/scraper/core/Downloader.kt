@@ -120,7 +120,7 @@ object Downloader {
             // 预检查：跳过已知的重复 MD5（通过 URL 快速判断）
             // 注意：这里无法在下载前判断 MD5，只能下载后判断
 
-            kotlinx.coroutines.async {
+            async {
                 val (success, info, md5) = downloadFileSync(url, savePath, referer)
 
                 if (!success) {
@@ -198,7 +198,7 @@ object Downloader {
         // 限制并发数
         val chunked = tasks.chunked(maxWorkers)
         for (chunk in chunked) {
-            val batchResults = chunk.awaitAll()
+            val batchResults = awaitAll(*chunk.toTypedArray())
             results.addAll(batchResults)
         }
 
