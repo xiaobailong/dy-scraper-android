@@ -1,0 +1,245 @@
+package com.dy.scraper.core
+
+import com.dy.scraper.api.DouyinApiCollector
+import com.dy.scraper.data.AppDatabase
+import com.dy.scraper.data.entity.ScrapeRecord
+import com.dy.scraper.data.entity.SkippedRecord
+import com.dy.scraper.data.entity.UrlMapping
+import com.dy.scraper.entity.PageContext
+import com.dy.scraper.entity.ScrapeStats
+import com.dy.scraper.util.AppConfig
+import com.dy.scraper.util.ImageDedupChecker
+import com.dy.scraper.util.Logger
+import com.dy.scraper.util.Utils
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class UrlProcessor(
+    private val db: AppDatabase,
+    private val md5Registry: MutableSet<String>,
+    private val videoHashRegistry: MutableMap<String, List<String>>,
+    private val resultDir: File,
+) {
+    private val scrapeDao = db.scrapeDao()
+
+    suspend fun process(
+        wvm: WebViewManager,
+        targetUrl: String,
+        urlIdx: Int,
+        urlTotal: Int,
+        stats: ScrapeStats,
+        lastFinalUrl: String?,
+    ): Pair<PageContext?, String> {
+        val normalizedUrl = Utils.normalizeUrl(targetUrl)
+
+        Logger.log("")
+        Logger.log("=".repeat(60))
+        Logger.log("  [$urlIdx/$urlTotal] ${targetUrl.take(80)}")
+        Logger.log("=".repeat(60))
+
+        // ── 1. goto ──
+        Logger.log("[2/6] 访问目标页面...")
+        val loaded = wvm.loadUrl(targetUrl)
+        val finalUrl = wvm.getFinalUrl()
+        Logger.log("  最终跳转地址: $finalUrl")
+
+        if (!loaded) {
+            Logger.log("  ⚠️ 页面加载失败，跳过当前 URL")
+            scrapeDao.insertSkipped(
+                SkippedRecord(
+                    shortUrl = normalizedUrl,
+                    skipReason = "页面加载失败",
+                    createTime = now()
+                )
+            )
+            return Pair(null, lastFinalUrl ?: "")
+        }
+
+        // ── 2. 校验 ──
+        val (valid, skipReason) = validateUrl(finalUrl, lastFinalUrl)
+        if (!valid) {
+            scrapeDao.insertSkipped(
+                SkippedRecord(
+                    shortUrl = normalizedUrl,
+                    skipReason = skipReason,
+                    createTime = now()
+                )
+            )
+            return Pair(null, lastFinalUrl ?: "")
+        }
+
+        // 记录请求收集的切片起点
+        val reqStart = wvm.collectedRequests.size
+        val detailStart = wvm.detailResponses.size
+
+        // ── 3. 等待渲染 ──
+        Logger.log("[3/6] 等待页面内容渲染...")
+        wvm.waitForRender()
+
+        // ── 4. 创建上下文 ──
+        val ctx = PageContext(shortUrl = targetUrl, finalUrl = finalUrl)
+        ctx.pushStage("ctx_create")
+
+        // ── 5. 提取元数据 ──
+        Logger.log("[4/6] 提取页面数据...")
+        MetadataExtractor.extractFromWebView(wvm, ctx)
+        ctx.pushStage("extract_meta")
+
+        // 从网络请求提取 URL
+        val newRequests = wvm.collectedRequests.drop(reqStart).toList()
+        val (netVideos, netImages) = Downloader.extractUrlsFromNetwork(newRequests)
+        ctx.networkVideoUrls = netVideos
+        ctx.networkImageUrls = netImages
+        ctx.pushStage("extract_network")
+
+        // 从 API 响应提取（如果 WebView 中拦截到了 API URL）
+        val newDetailUrls = wvm.detailResponses.drop(detailStart).toList()
+        // 这里 demo 阶段暂不发起二次 API 请求，以 DOM+网络请求为主
+        Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
+
+        // ── 6. 合并 URL ──
+        mergeUrls(ctx)
+        ctx.pushStage("merge_urls")
+
+        val authorInfo = buildString {
+            append(ctx.author.takeIf { it.isNotEmpty() } ?: "(未获取到)")
+            if (ctx.authorCode.isNotEmpty()) append("  (@${ctx.authorCode})")
+        }
+        Logger.log("")
+        Logger.log("【页面标题】${ctx.title.takeIf { it.isNotEmpty() } ?: "(未获取到)"}")
+        Logger.log("【作者】$authorInfo")
+        Logger.log("【视频】${ctx.videoUrls.size} 个  【图片】${ctx.imageUrls.size} 个")
+
+        // ── 7. 下载 ──
+        Logger.log("")
+        Logger.log("[5/6] 下载文件...")
+        Logger.log("  视频临时目录: ${AppConfig.tempVideoDir.absolutePath}")
+
+        ctx.videoResults = Downloader.downloadFiles(
+            ctx, AppConfig.tempVideoDir, "video",
+            maxWorkers = AppConfig.MAX_VIDEO_WORKERS,
+            md5Registry = md5Registry,
+            videoHashRegistry = videoHashRegistry,
+        )
+        ctx.pushStage("download_video")
+
+        Logger.log("  图片临时目录: ${AppConfig.tempImageDir.absolutePath}")
+        ctx.imageResults = Downloader.downloadFiles(
+            ctx, AppConfig.tempImageDir, "image",
+            maxWorkers = AppConfig.MAX_IMAGE_WORKERS,
+            md5Registry = md5Registry,
+        )
+        ctx.pushStage("download_image")
+
+        // ── 8. 保存结果 ──
+        Logger.log("")
+        Logger.log("[6/6] 保存结果...")
+        stats.accumulatePage(ctx)
+        stats.printPageResult(ctx)
+
+        recordToDb(ctx, targetUrl, finalUrl)
+        ctx.pushStage("db_record")
+
+        val resultPath = ctx.saveResultJson(resultDir)
+        ctx.pushStage("save_result")
+        Logger.log("  结果已保存: ${resultPath.absolutePath}")
+
+        return Pair(ctx, finalUrl)
+    }
+
+    // ── 校验 ──
+    private suspend fun validateUrl(finalUrl: String, lastFinalUrl: String?): Pair<Boolean, String> {
+        val existing = scrapeDao.getByFinalUrl(finalUrl)
+        if (existing != null) {
+            Logger.log("  ⚠️ 长链接重复（最终地址已被处理过），跳过")
+            Logger.log("     首次处理短链接: ${existing.shortUrl}")
+            Logger.log("     首次处理时间: ${existing.createTime}")
+            return Pair(false, "长链接重复（最终地址已被处理过）")
+        }
+
+        if (lastFinalUrl != null && finalUrl == lastFinalUrl) {
+            Logger.log("  ⚠️ 跳转前后地址相同，可能未成功进入新页面，跳过")
+            return Pair(false, "跳转地址相同（未成功进入新页面）")
+        }
+
+        val invalidPaths = listOf("/notfound", "/404", "/about:blank", "/error")
+        if (invalidPaths.any { it in finalUrl }) {
+            Logger.log("  ⚠️ 目标页面不存在（$finalUrl），跳过")
+            return Pair(false, "目标页面不存在")
+        }
+
+        return Pair(true, "")
+    }
+
+    // ── URL 合并 ──
+    private fun mergeUrls(ctx: PageContext) {
+        // 视频 URL 合并（优先级：API > DOM > 网络请求）
+        val rawVideoUrls = if (ctx.apiVideoUrls.isNotEmpty()) {
+            Logger.log("  API获取到 ${ctx.apiVideoUrls.size} 个视频链接（高清），优先使用")
+            ctx.apiVideoUrls
+        } else {
+            Logger.log("  API未获取到视频链接，退到DOM+网络请求")
+            ctx.domVideoUrls + ctx.networkVideoUrls
+        }
+
+        ctx.videoUrls = Downloader.deduplicateVideos(rawVideoUrls.distinct())
+            .filter { !it.startsWith("blob:") }
+            .filter { !Utils.isUiAsset(it) }
+            .filter { !Utils.isAudioUrl(it) }
+
+        // 图片 URL 合并
+        val rawImageUrls = if (ctx.apiImageUrls.isNotEmpty()) {
+            Logger.log("  API/SSR获取到 ${ctx.apiImageUrls.size} 个图片链接，优先使用")
+            ctx.apiImageUrls
+        } else {
+            Logger.log("  API/SSR均未获取到图片链接，退到DOM+网络请求")
+            ctx.domImageUrls + ctx.networkImageUrls
+        }
+
+        ctx.imageUrls = Downloader.sortImagesByQuality(rawImageUrls.distinct())
+            .filter { !it.startsWith("blob:") }
+            .filter { !Utils.isUiAsset(it) }
+            .filter { !ImageDedupChecker.isCoverUrl(it) }
+            .filter { !ImageDedupChecker.isEmojiStickerUrl(it) }
+    }
+
+    // ── 数据库记录 ──
+    private suspend fun recordToDb(ctx: PageContext, targetUrl: String, finalUrl: String) {
+        val normalizedUrl = Utils.normalizeUrl(targetUrl)
+
+        if (ctx.hasDownloads) {
+            scrapeDao.insertRecord(
+                ScrapeRecord(
+                    shortUrl = normalizedUrl,
+                    finalUrl = finalUrl,
+                    albumName = ctx.author,
+                    albumCode = ctx.authorCode,
+                    remark = ctx.title,
+                    createTime = now()
+                )
+            )
+            scrapeDao.insertUrlMapping(
+                UrlMapping(finalUrl = finalUrl, shortUrl = normalizedUrl, createTime = now())
+            )
+            Logger.log("  URL已记录到数据库")
+        } else if (ctx.hasMediaUrls) {
+            scrapeDao.insertSkipped(
+                SkippedRecord(
+                    shortUrl = normalizedUrl,
+                    albumName = ctx.author,
+                    albumCode = ctx.authorCode,
+                    remark = ctx.title,
+                    skipReason = "所有媒体文件均因大小/去重被跳过",
+                    createTime = now()
+                )
+            )
+            Logger.log("  URL记录到跳过表")
+        }
+    }
+
+    private fun now(): String {
+        return SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+    }
+}
