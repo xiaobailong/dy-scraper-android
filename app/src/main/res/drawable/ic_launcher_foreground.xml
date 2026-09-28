@@ -1,0 +1,52 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 虫身 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M40,30 C44,24 54,24 58,30 L62,50 L72,50 L72,54 L62,62 L58,78 L50,78 L46,62 L36,54 L36,50 L46,50 Z" />
+    <!-- 触角左 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M41,30 C38,22 32,20 28,22" />
+    <!-- 触角右 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M57,30 C60,22 66,20 70,22" />
+    <!-- 眼睛左 -->
+    <path
+        android:fillColor="#FF6200EE"
+        android:pathData="M42,40 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+    <!-- 眼睛右 -->
+    <path
+        android:fillColor="#FF6200EE"
+        android:pathData="M54,40 m-3,0 a3,3 0 1,1 6,0 a3,3 0 1,1 -6,0" />
+    <!-- 足左 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M38,50 C30,48 28,50 26,48" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M38,58 C30,56 28,58 26,56" />
+    <!-- 足右 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M70,50 C78,48 80,50 82,48" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M70,58 C78,56 80,58 82,56" />
+</vector>
