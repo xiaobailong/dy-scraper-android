@@ -149,7 +149,7 @@ for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') 
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
-set "APK_NAME=斗虫-v%V_NAME%_b%V_CODE%.apk"
+set "APK_NAME=dy-scraper-v%V_NAME%_b%V_CODE%.apk"
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "%APK_NAME%" > nul
     set "APK_PATH=%CD%\%APK_NAME%"
@@ -308,7 +308,7 @@ if %BUILD_EXIT% neq 0 (
 )
 echo       构建成功。
 
-set "APK_NAME=斗虫-v%V_NAME%_b%V_CODE%.apk"
+set "APK_NAME=dy-scraper-v%V_NAME%_b%V_CODE%.apk"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
@@ -508,11 +508,19 @@ if errorlevel 1 (
         --repo "%GH_REPO%"
 ) else (
     echo       Release %TAG% 已存在，更新说明并覆盖上传 APK...
+    echo       清理旧的 APK 资产...
+    for /f "delims=" %%a in ('"%GH_EXE%" release view "%TAG%" --repo "%GH_REPO%" --json assets --template "{{range .assets}}{{.name}}{{\n}}{{end}}" 2^>nul') do (
+        echo %%a | findstr /i /r "\.apk$" >nul 2>&1
+        if not errorlevel 1 (
+            echo         - 删除旧资产: %%a
+            "%GH_EXE%" release delete-asset --yes --repo "%GH_REPO%" "%TAG%" -- "%%a" >nul 2>&1
+        )
+    )
     "%GH_EXE%" release edit "%TAG%" ^
         --title "%TAG%" ^
         --notes "dy-scraper-android %TAG% (build %V_CODE%)" ^
         --repo "%GH_REPO%" >nul 2>&1
-    "%GH_EXE%" release upload "%TAG%" "%APK_PATH%" --clobber --repo "%GH_REPO%"
+    "%GH_EXE%" release upload "%TAG%" "%APK_PATH%" --repo "%GH_REPO%"
 )
 if errorlevel 1 (
     echo [错误] gh 返回失败，请检查: gh auth status / 网络 / 标签 %TAG% 是否已存在
