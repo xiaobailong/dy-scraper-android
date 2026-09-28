@@ -30,6 +30,7 @@
     <string name="settings_youdao_url_title">有道文档地址</string>
     <string name="settings_youdao_url_hint">请输入有道云笔记文档 API 地址</string>
     <string name="settings_youdao_url_saved">有道文档地址已保存</string>
+    <string name="settings_youdao_url_invalid">地址无效! 需要 /yws/api/note/ 开头的有道笔记API地址</string>
 
     <string name="about_title">关于</string>
     <string name="about_version_line">v%1$s (build %2$d)</string>

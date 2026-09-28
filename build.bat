@@ -149,7 +149,7 @@ for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') 
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
-set "APK_NAME=dy-scraper-v%V_NAME%_b%V_CODE%.apk"
+set "APK_NAME=dy-scraper-v%V_NAME%.apk"
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
     copy /y "%%f" "%APK_NAME%" > nul
     set "APK_PATH=%CD%\%APK_NAME%"
@@ -308,7 +308,7 @@ if %BUILD_EXIT% neq 0 (
 )
 echo       构建成功。
 
-set "APK_NAME=dy-scraper-v%V_NAME%_b%V_CODE%.apk"
+set "APK_NAME=dy-scraper-v%V_NAME%.apk"
 if exist "*.apk" del /q "*.apk" 2>nul
 set "APK_PATH="
 for /f "delims=" %%f in ('dir /s /b app\build\outputs\apk\debug\*.apk 2^>nul') do (
@@ -413,7 +413,7 @@ for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') 
 set /a NEW_CODE=%OLD_CODE% + 1
 echo       版本递增: versionCode %OLD_CODE% -^> %NEW_CODE%
 
-powershell -NoProfile -Command "$ver = Get-Content 'version.properties' -Raw; $ver = $ver -replace 'versionCode=\d+', 'versionCode=%NEW_CODE%'; [System.IO.File]::WriteAllText('version.properties', $ver, [System.Text.UTF8Encoding]::new($true))"
+powershell -NoProfile -Command "$v='1.0.%NEW_CODE%'; $ver = Get-Content 'version.properties' -Raw; $ver = $ver -replace 'versionCode=\d+', 'versionCode=%NEW_CODE%'; $ver = $ver -replace 'versionName=[\d.]+', ('versionName='+$v); [System.IO.File]::WriteAllText('version.properties', $ver, [System.Text.UTF8Encoding]::new($true))"
 
 if %ERRORLEVEL% neq 0 (
     exit /b 1

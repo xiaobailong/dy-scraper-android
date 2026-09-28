@@ -236,22 +236,26 @@ class MainActivity : AppCompatActivity() {
         val dialogView = layoutInflater.inflate(R.layout.dialog_youdao_url, null)
         val etYoudaoUrl = dialogView.findViewById<EditText>(R.id.etYoudaoUrl)
 
-        val currentUrl = YoudaoFetcher.getApiUrl(this)
-        etYoudaoUrl.setText(currentUrl)
+        etYoudaoUrl.setText(YoudaoFetcher.getDisplayApiUrl(this))
 
         AlertDialog.Builder(this)
             .setTitle(R.string.settings_youdao_url_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 val newUrl = etYoudaoUrl.text.toString().trim()
-                YoudaoFetcher.saveApiUrl(this, newUrl)
-                val savedUrl = YoudaoFetcher.getApiUrl(this)
-                Toast.makeText(
-                    this,
-                    getString(R.string.settings_youdao_url_saved) + ": " + savedUrl,
-                    Toast.LENGTH_SHORT
-                ).show()
-                Logger.d("Youdao URL settings dialog: saved API URL = $savedUrl")
+                if (YoudaoFetcher.saveApiUrl(this, newUrl)) {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.settings_youdao_url_saved),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    Toast.makeText(
+                        this,
+                        getString(R.string.settings_youdao_url_invalid),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()

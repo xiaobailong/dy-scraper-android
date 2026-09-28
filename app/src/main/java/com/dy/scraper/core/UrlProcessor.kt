@@ -96,10 +96,24 @@ class UrlProcessor(
         ctx.networkImageUrls = netImages
         ctx.pushStage("extract_network")
 
-        // 从 API 响应提取（如果 WebView 中拦截到了 API URL）
+        // 从 API 响应提取视频/图片 URL（二次请求解析 JSON）
         val newDetailUrls = wvm.detailResponses.drop(detailStart).toList()
-        // 这里 demo 阶段暂不发起二次 API 请求，以 DOM+网络请求为主
         Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
+        val cookies = wvm.getCookies()
+        val distinctApiUrls = newDetailUrls.distinct().take(3)
+        for (apiUrl in distinctApiUrls) {
+            val apiData = DouyinApiCollector.fetchAndParseApiResponse(apiUrl, cookies)
+            if (apiData.videoUrls.isNotEmpty()) {
+                ctx.apiVideoUrls = apiData.videoUrls
+            }
+            if (apiData.imageUrls.isNotEmpty()) {
+                ctx.apiImageUrls = (ctx.apiImageUrls + apiData.imageUrls).distinct()
+            }
+            if (apiData.author.isNotEmpty() && ctx.author.isEmpty()) {
+                ctx.author = apiData.author
+                ctx.authorCode = apiData.authorCode
+            }
+        }
 
         // ── 6. 合并 URL ──
         Logger.log("[6a] 合并URL...")

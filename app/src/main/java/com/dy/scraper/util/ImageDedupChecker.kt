@@ -7,7 +7,7 @@ import java.io.File
 object ImageDedupChecker {
 
     private const val EMOJI_MAX_SIZE = 400
-    private const val PHASH_HAMMING_THRESHOLD = 10
+    private const val PHASH_HAMMING_THRESHOLD = 4
 
     private val COVER_PATTERNS = listOf(
         Regex("[?&]cover="),
@@ -112,8 +112,21 @@ object ImageDedupChecker {
         return distance
     }
 
+    @Synchronized
     fun checkAndDedup(currentFile: File, existingDir: File): Boolean {
+        if (!currentFile.exists() || currentFile.length() == 0L) {
+            Logger.d("ImageDedup: checkAndDedup skip, file already gone: ${currentFile.name}")
+            return false
+        }
+
+        val currentSize = currentFile.length()
         val currentHash = computePHash(currentFile) ?: return false
+
+        if (!currentFile.exists()) {
+            Logger.d("ImageDedup: current file deleted during pHash computation: ${currentFile.name}")
+            return false
+        }
+
         val existingFiles = existingDir.listFiles()
             ?.filter { it.isFile && it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "gif") }
             ?: return false
@@ -121,15 +134,21 @@ object ImageDedupChecker {
         var removed = false
         for (existingFile in existingFiles) {
             if (existingFile.absolutePath == currentFile.absolutePath) continue
+            if (!existingFile.exists()) continue
+
+            val existingSize = existingFile.length()
+            if (existingSize == 0L) continue
+
             val existingHash = computePHash(existingFile) ?: continue
+            if (!existingFile.exists()) continue
+
             if (hammingDistance(currentHash, existingHash) <= PHASH_HAMMING_THRESHOLD) {
-                // 保留较大的文件
-                if (currentFile.length() >= existingFile.length()) {
+                if (currentSize >= existingSize) {
                     Utils.safeDelete(existingFile)
-                    Logger.log("    [图片去重] pHash匹配，保留 ${currentFile.name} (${currentFile.length()} > ${existingFile.length()})", "debug")
+                    Logger.log("    [图片去重] pHash匹配，保留 ${currentFile.name} ($currentSize > $existingSize)", "debug")
                 } else {
                     Utils.safeDelete(currentFile)
-                    Logger.log("    [图片去重] pHash匹配，删除 ${currentFile.name} (${currentFile.length()} < ${existingFile.length()})", "debug")
+                    Logger.log("    [图片去重] pHash匹配，删除 ${currentFile.name} ($currentSize < $existingSize)", "debug")
                     removed = true
                 }
                 break

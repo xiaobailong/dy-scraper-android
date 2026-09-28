@@ -75,7 +75,10 @@ class WebViewManager(private val context: Context) {
                 finalUrl = url
                 currentUrl = url
                 Logger.log("  WebView 加载完成: ${url.take(80)}...", "debug")
-                pageLoadDeferred?.complete(true)
+
+                if ("douyin.com" in url || "iesdouyin.com" in url) {
+                    pageLoadDeferred?.complete(true)
+                }
             }
 
             override fun shouldInterceptRequest(
@@ -137,6 +140,11 @@ class WebViewManager(private val context: Context) {
     }
 
     fun getFinalUrl(): String = finalUrl
+
+    fun getCookies(): String {
+        val cookieManager = android.webkit.CookieManager.getInstance()
+        return cookieManager.getCookie("https://www.douyin.com") ?: ""
+    }
 
     // ── JS 执行 ──
     suspend fun evaluateJavascript(script: String): String {

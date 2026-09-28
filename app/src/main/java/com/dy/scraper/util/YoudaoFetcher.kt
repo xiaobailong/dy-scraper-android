@@ -26,17 +26,47 @@ object YoudaoFetcher {
     )
 
     fun getApiUrl(context: Context): String {
-        val url = context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
+        val savedUrl = context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
             .getString(PREFS_KEY_YOUDAO_URL, "") ?: ""
-        return url.ifBlank { DEFAULT_YOUDAO_API }
+        if (savedUrl.isBlank()) return DEFAULT_YOUDAO_API
+
+        if (!isValidNoteApiUrl(savedUrl)) {
+            Logger.d("YoudaoFetcher: saved URL is not a valid note API, falling back to default")
+            return DEFAULT_YOUDAO_API
+        }
+
+        return savedUrl
     }
 
-    fun saveApiUrl(context: Context, url: String) {
+    private fun isValidNoteApiUrl(url: String): Boolean {
+        return url.contains("/yws/api/note/") && Regex("note/([a-f0-9]{32})").containsMatchIn(url)
+    }
+
+    fun saveApiUrl(context: Context, url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isBlank()) {
+            Logger.d("YoudaoFetcher: save rejected, URL is blank")
+            return false
+        }
+        if (!isValidNoteApiUrl(trimmed)) {
+            Logger.d("YoudaoFetcher: save rejected, invalid note API URL: $trimmed")
+            return false
+        }
         context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(PREFS_KEY_YOUDAO_URL, url)
+            .putString(PREFS_KEY_YOUDAO_URL, trimmed)
             .apply()
-        Logger.d("YoudaoFetcher: saved API URL = $url")
+        Logger.d("YoudaoFetcher: saved API URL = $trimmed")
+        return true
+    }
+
+    fun isNoteApiUrlValid(url: String): Boolean = isValidNoteApiUrl(url.trim())
+
+    fun getDisplayApiUrl(context: Context): String {
+        val savedUrl = context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREFS_KEY_YOUDAO_URL, "") ?: ""
+        return if (savedUrl.isBlank() || !isValidNoteApiUrl(savedUrl)) DEFAULT_YOUDAO_API
+        else savedUrl
     }
 
     suspend fun fetchUrls(context: Context): FetchResult =
