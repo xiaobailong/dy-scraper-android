@@ -322,10 +322,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun parseUrlInput(): List<String> {
+        val urlRegex = Regex("""https?://[^\s，。；;,\u0000-\u001F\u007F]+""")
         return etUrlInput.text.toString()
             .lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .flatMap { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("#")) return@flatMap emptyList()
+                urlRegex.findAll(trimmed).map { it.value.trimEnd('.', ',', ';', '，', '。') }.toList()
+            }
+            .filter { it.isNotEmpty() }
+            .distinct()
     }
 
     private fun fetchYoudaoUrls() {
