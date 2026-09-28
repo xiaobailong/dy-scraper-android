@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "url_mapping",
-    indices = [Index(value = ["final_url"], unique = true)]
+    indices = [Index(value = ["finalUrl"], unique = true)]
 )
 data class UrlMapping(
     @PrimaryKey(autoGenerate = true)

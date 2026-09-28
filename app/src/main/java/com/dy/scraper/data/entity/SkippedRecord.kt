@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "skipped_records",
-    indices = [Index(value = ["short_url"], unique = true)]
+    indices = [Index(value = ["shortUrl"], unique = true)]
 )
 data class SkippedRecord(
     @PrimaryKey(autoGenerate = true)

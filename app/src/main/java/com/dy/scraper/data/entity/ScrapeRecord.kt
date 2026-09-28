@@ -6,7 +6,7 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "scrape_records",
-    indices = [Index(value = ["short_url"], unique = true)]
+    indices = [Index(value = ["shortUrl"], unique = true)]
 )
 data class ScrapeRecord(
     @PrimaryKey(autoGenerate = true)
