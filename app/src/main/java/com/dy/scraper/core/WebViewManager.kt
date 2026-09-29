@@ -160,6 +160,37 @@ class WebViewManager(private val context: Context) {
         return result
     }
 
+    // ── 通过 JS fetch 从 WebView 内部请求 API（共享 Cookie 会话） ──
+    suspend fun fetchApiViaJs(apiUrl: String): String? {
+        val escapedUrl = apiUrl.replace("\\", "\\\\").replace("'", "\\'")
+        val script = """
+            (async function() {
+                try {
+                    const resp = await fetch('$escapedUrl', {credentials: 'include'});
+                    if (!resp.ok) return 'HTTP_' + resp.status;
+                    return await resp.text();
+                } catch(e) {
+                    return 'ERROR:' + e.message;
+                }
+            })();
+        """.trimIndent()
+
+        val rawResult = evaluateJavascript(script)
+        if (rawResult == "null") return null
+
+        val unescaped = try {
+            com.google.gson.Gson().fromJson(rawResult, String::class.java)
+        } catch (_: Exception) {
+            rawResult.removeSurrounding("\"").replace("\\\"", "\"").replace("\\\\", "\\")
+        }
+
+        if (unescaped.startsWith("HTTP_") || unescaped.startsWith("ERROR:")) {
+            Logger.log("  [JS fetch API] 失败: $unescaped", "warn")
+            return null
+        }
+        return unescaped
+    }
+
     // ── 等待页面渲染 ──
     suspend fun waitForRender() {
         Logger.log("  等待页面渲染 (最多${AppConfig.RENDER_WAIT_MS}ms)...")

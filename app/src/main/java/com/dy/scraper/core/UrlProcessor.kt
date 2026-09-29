@@ -96,23 +96,40 @@ class UrlProcessor(
         ctx.networkImageUrls = netImages
         ctx.pushStage("extract_network")
 
-        // 从 API 响应提取视频/图片 URL（二次请求解析 JSON）
+        // 从 API 响应提取视频/图片 URL
+        // 优先使用 WebView JS fetch（共享 Cookie 会话），失败时回退到 OkHttp
         val newDetailUrls = wvm.detailResponses.drop(detailStart).toList()
         Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
-        val cookies = wvm.getCookies()
         val distinctApiUrls = newDetailUrls.distinct().take(6)
-        Logger.log("  将尝试 ${distinctApiUrls.size} 个 API URL")
+        Logger.log("  将尝试 ${distinctApiUrls.size} 个 API URL（优先 JS fetch）")
         for (apiUrl in distinctApiUrls) {
-            val apiData = DouyinApiCollector.fetchAndParseApiResponse(apiUrl, cookies)
-            if (apiData.videoUrls.isNotEmpty()) {
-                ctx.apiVideoUrls = apiData.videoUrls
-            }
-            if (apiData.imageUrls.isNotEmpty()) {
-                ctx.apiImageUrls = (ctx.apiImageUrls + apiData.imageUrls).distinct()
-            }
-            if (apiData.author.isNotEmpty() && ctx.author.isEmpty()) {
-                ctx.author = apiData.author
-                ctx.authorCode = apiData.authorCode
+            // 主路径：WebView JS fetch（共享 Cookie）
+            val apiData = DouyinApiCollector.fetchAndParseApiResponseViaJs(wvm, apiUrl)
+            if (apiData.videoUrls.isNotEmpty() || apiData.imageUrls.isNotEmpty()) {
+                if (apiData.videoUrls.isNotEmpty()) {
+                    ctx.apiVideoUrls = apiData.videoUrls
+                }
+                if (apiData.imageUrls.isNotEmpty()) {
+                    ctx.apiImageUrls = (ctx.apiImageUrls + apiData.imageUrls).distinct()
+                }
+                if (apiData.author.isNotEmpty() && ctx.author.isEmpty()) {
+                    ctx.author = apiData.author
+                    ctx.authorCode = apiData.authorCode
+                }
+            } else {
+                // 回退路径：OkHttp（可能因 Cookie 缺失而失败）
+                Logger.log("  JS fetch 未获取到结果，回退到 OkHttp...", "debug")
+                val okData = DouyinApiCollector.fetchAndParseApiResponse(apiUrl, wvm.getCookies())
+                if (okData.videoUrls.isNotEmpty()) {
+                    ctx.apiVideoUrls = okData.videoUrls
+                }
+                if (okData.imageUrls.isNotEmpty()) {
+                    ctx.apiImageUrls = (ctx.apiImageUrls + okData.imageUrls).distinct()
+                }
+                if (okData.author.isNotEmpty() && ctx.author.isEmpty()) {
+                    ctx.author = okData.author
+                    ctx.authorCode = okData.authorCode
+                }
             }
         }
 

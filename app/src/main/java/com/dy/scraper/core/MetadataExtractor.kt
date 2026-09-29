@@ -177,6 +177,58 @@ object MetadataExtractor {
     }
 
     // ========================================
+    // 策略1.5: RENDER_DATA 脚本标签（笔记页数据在 #RENDER_DATA 元素中）
+    // ========================================
+    if (!result.extractSource) {
+        let renderData = null;
+        const renderEl = document.getElementById('RENDER_DATA');
+        if (renderEl && renderEl.textContent) {
+            try {
+                renderData = JSON.parse(renderEl.textContent);
+            } catch(e) {
+                try {
+                    renderData = JSON.parse(decodeURIComponent(renderEl.textContent));
+                } catch(e2) {}
+            }
+        }
+        if (renderData) {
+            const validDetail = _findValidDetail(renderData);
+            let hasAnyDetail = false;
+            try {
+                (function _walk(o) {
+                    if (!o || typeof o !== 'object') return;
+                    if (Array.isArray(o)) { for (const x of o) _walk(x); return; }
+                    for (const k of Object.keys(o)) {
+                        if (['aweme_detail','note_detail','aweme','note'].includes(k) && o[k] && typeof o[k]==='object') { hasAnyDetail = true; return; }
+                        _walk(o[k]); if (hasAnyDetail) return;
+                    }
+                })(renderData);
+            } catch(e) {}
+            if (!hasAnyDetail || validDetail) {
+                const found = deepFind(renderData);
+                if (found) {
+                    if (found.nickname && !result.author) result.author = found.nickname;
+                    if (found.unique_id && !result.authorCode) result.authorCode = found.unique_id;
+                    else if (found.short_id && !result.authorCode) result.authorCode = found.short_id;
+                    if (found.sec_uid && !result.secUid) result.secUid = found.sec_uid;
+                    if (result.author) result.extractSource = 'render_data_deep';
+                }
+                // 深度遍历没找到，用正则兜底
+                if (!result.authorCode) {
+                    try {
+                        const s = JSON.stringify(renderData);
+                        const m = s.match(/"(?:unique_id|short_id|douyin_id|account_id)"\s*:\s*"([^"]+)"/);
+                        if (m) {
+                            result.authorCode = m[1];
+                            result.extractSource = 'render_data_regex';
+                        }
+                    } catch(e) {}
+                }
+            }
+        }
+    }
+
+    // ========================================
     // 策略2: DOM 提取视频/图片 URL
     // ========================================
     if (!result.extractSource) {
