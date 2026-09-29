@@ -98,6 +98,21 @@ object PageHook {
         } catch (e) {}
     }
 
+    // 全量网络日志：所有 XHR/fetch 响应都上报（调试视频下载问题时很有用）
+    function reportAll(u, method, status, ct, body) {
+        try {
+            if (window.DyBridge && window.DyBridge.onNetworkLog) {
+                window.DyBridge.onNetworkLog(JSON.stringify({
+                    url: String(u || ''),
+                    method: String(method || 'GET'),
+                    status: Number(status || 0),
+                    contentType: String(ct || ''),
+                    body: String(body || '')
+                }));
+            }
+        } catch (e) {}
+    }
+
     // ── 1. XHR 旁听 ──
     try {
         var XHR = window.XMLHttpRequest;
@@ -105,23 +120,23 @@ object PageHook {
             var _open = XHR.prototype.open;
             var _send = XHR.prototype.send;
             XHR.prototype.open = function(m, u) {
-                try { this.__dyUrl = u; } catch (e) {}
+                try { this.__dyUrl = u; this.__dyMethod = m; } catch (e) {}
                 return _open.apply(this, arguments);
             };
             XHR.prototype.send = function() {
                 try {
                     var xhr = this;
-                    if (hit(xhr.__dyUrl)) {
-                        xhr.addEventListener('loadend', function() {
-                            try {
-                                var t = '';
-                                var rt = xhr.responseType;
-                                if (!rt || rt === 'text') t = xhr.responseText;
-                                else if (rt === 'json') t = JSON.stringify(xhr.response);
-                                report(xhr.__dyUrl, t);
-                            } catch (e) {}
-                        });
-                    }
+                    xhr.addEventListener('loadend', function() {
+                        try {
+                            var t = '';
+                            var rt = xhr.responseType;
+                            if (!rt || rt === 'text') t = xhr.responseText;
+                            else if (rt === 'json') t = JSON.stringify(xhr.response);
+                            reportAll(xhr.__dyUrl, xhr.__dyMethod, xhr.status,
+                                xhr.getResponseHeader('Content-Type') || '', t);
+                            if (hit(xhr.__dyUrl)) report(xhr.__dyUrl, t);
+                        } catch (e) {}
+                    });
                 } catch (e) {}
                 return _send.apply(this, arguments);
             };
@@ -134,14 +149,20 @@ object PageHook {
         if (_fetch && !_fetch.__dyWrapped) {
             var wrapped = function(input, init) {
                 var u = '';
+                var m = 'GET';
                 try { u = (typeof input === 'string') ? input : ((input && input.url) || ''); } catch (e) {}
+                try { if (init && init.method) m = init.method; } catch (e) {}
                 var p = _fetch.apply(this, arguments);
-                if (!hit(u)) return p;
                 try {
                     return p.then(function(resp) {
                         try {
                             if (resp && resp.clone) {
-                                resp.clone().text().then(function(t) { report(u, t); }).catch(function() {});
+                                var ct = '';
+                                try { ct = resp.headers.get('Content-Type') || ''; } catch (e) {}
+                                resp.clone().text().then(function(t) {
+                                    reportAll(u, m, resp.status, ct, t);
+                                    if (hit(u)) report(u, t);
+                                }).catch(function() {});
                             }
                         } catch (e) {}
                         return resp;

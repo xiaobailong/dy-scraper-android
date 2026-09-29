@@ -3,6 +3,7 @@ package com.dy.scraper.core
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -30,6 +31,17 @@ class WebViewManager(private val context: Context) {
 
     private val gson = Gson()
 
+    companion object {
+        /** 网络日志中记录的头字段白名单（小写） */
+        private val NETWORK_LOG_HEADER_WHITELIST = setOf(
+            "content-type", "content-length", "referer", "origin",
+            "x-requested-with", "x-requested-from", "x-csrftoken",
+            "x-tt-request-tag", "x-tt-trace-id", "x-tt-logid",
+            "x-argus", "x-ladon", "x-khronos", "x-gorgon",
+            "cookie", "user-agent", "accept", "accept-encoding",
+        )
+    }
+
     // ── 页面内钩子（document-start 注入 XHR/fetch 旁听 + SSR 快照） ──
     /** document-start 脚本是否已由 androidx.webkit 安装（false = 只能 onPageStarted 兜底注入） */
     var documentStartHookInstalled = false
@@ -48,8 +60,22 @@ class WebViewManager(private val context: Context) {
 
 
     @SuppressLint("SetJavaScriptEnabled")
-    private val webView: WebView = WebView(context).apply {
-        settings.apply {
+    private lateinit var webView: WebView
+
+    init {
+        val wv = WebView(context)
+        initWebView(wv)
+    }
+
+    constructor(context: Context, externalWebView: WebView) : this(context) {
+        // 替换 init 块中创建的 WebView 为外部传入的
+        // init 中创建的 WebView 没有引用，会被 GC
+        initWebView(externalWebView)
+    }
+
+    private fun initWebView(wv: WebView) {
+        webView = wv
+        wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
             databaseEnabled = true
@@ -62,9 +88,22 @@ class WebViewManager(private val context: Context) {
             blockNetworkLoads = false
         }
 
-        addJavascriptInterface(JsBridge(), PageHook.BRIDGE_NAME)
+        wv.addJavascriptInterface(JsBridge(), PageHook.BRIDGE_NAME)
 
-        installDocumentStartHook()
+        // 延迟到 WebView 生命周期就绪后再安装 document-start 钩子
+        // 内部创建的 WebView 可能还没 attached → post {} 确保 provider 已创建
+        // 外部 WebView 已在布局中 attached → 直接调用也能成功
+        if (wv.isAttachedToWindow) {
+            installDocumentStartHook()
+        } else {
+            wv.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {
+                    installDocumentStartHook()
+                    wv.removeOnAttachStateChangeListener(this)
+                }
+                override fun onViewDetachedFromWindow(v: View) {}
+            })
+        }
     }
 
     /**
@@ -151,12 +190,25 @@ class WebViewManager(private val context: Context) {
             ): WebResourceResponse? {
                 val url = request.url.toString()
                 val contentType = request.requestHeaders["Content-Type"] ?: ""
+                val method = request.method
 
                 // 收集所有网络请求（对应 Playwright 的 page.on("response")）
                 collectedRequests.add(mapOf(
                     "url" to url,
                     "contentType" to contentType,
                 ))
+
+                // ── 全量请求日志（调试用，可关闭） ──
+                if (AppConfig.VERBOSE_NETWORK_LOG && !url.contains("douyinstatic.com")) {
+                    val headers = request.requestHeaders.entries
+                        .filter { (k, _) -> k.lowercase() in NETWORK_LOG_HEADER_WHITELIST }
+                        .joinToString(", ") { (k, v) -> "$k: ${v.take(120)}" }
+                    val urlShort = url.take(200)
+                    Logger.log("  [NET:$method] $urlShort", "network")
+                    if (headers.isNotEmpty()) {
+                        Logger.log("    Headers: $headers", "network")
+                    }
+                }
 
                 // 拦截抖音详情 API 响应（对应 douyin_detail.py）—— 这里只记 URL；
                 // 响应体由 document-start 钩子（PageHook）在页面自己发请求时旁听拿到
@@ -169,13 +221,22 @@ class WebViewManager(private val context: Context) {
                 return super.shouldInterceptRequest(view, request)
             }
 
+            @Suppress("OVERRIDE_DEPRECATION")
+            override fun onLoadResource(view: WebView, url: String) {
+                super.onLoadResource(view, url)
+                if (AppConfig.VERBOSE_NETWORK_LOG && !url.contains("douyinstatic.com")) {
+                    Logger.log("  [NET:LOADED] ${url.take(200)}", "network")
+                }
+            }
+
+            @Suppress("OVERRIDE_DEPRECATION")
             override fun onReceivedError(
                 view: WebView,
                 errorCode: Int,
                 description: String,
                 failingUrl: String
             ) {
-                Logger.log("  WebView 加载错误: [$errorCode] $description", "error")
+                Logger.log("  WebView 请求错误(已废弃API): [$errorCode] $description url=${failingUrl.take(80)}", "error")
                 pageLoadDeferred?.complete(false)
             }
         }
@@ -456,6 +517,34 @@ class WebViewManager(private val context: Context) {
         @JavascriptInterface
         fun onApiResponse(requestId: String, body: String) {
             jsCallbacks[requestId]?.complete(body)
+        }
+
+        /**
+         * 全量网络日志：页面所有 XHR/fetch 请求的响应都会回传到这里。
+         * 用于分析哪些 API 返回了视频 URL、请求参数等。
+         */
+        @JavascriptInterface
+        fun onNetworkLog(jsonStr: String) {
+            if (!AppConfig.VERBOSE_NETWORK_LOG) return
+            try {
+                val entry = gson.fromJson(jsonStr, Map::class.java) ?: return
+                val url = (entry["url"] as? String) ?: return
+                val status = (entry["status"] as? Double)?.toInt() ?: 0
+                val body = (entry["body"] as? String) ?: ""
+                val ct = (entry["contentType"] as? String) ?: ""
+                val method = (entry["method"] as? String) ?: ""
+
+                val urlShort = url.take(200)
+                val bodyLimit = AppConfig.NETWORK_LOG_MAX_BODY_LENGTH
+                val bodySnippet = if (body.length <= bodyLimit) body else body.take(bodyLimit) + "...(${body.length} 字符)"
+
+                Logger.log("  [NET:RESP] $method $urlShort → $status ($ct)", "network")
+                if (bodySnippet.isNotEmpty() && PageHook.isUsableBody(body)) {
+                    Logger.log("    Body(${body.length} 字符): $bodySnippet", "network")
+                }
+            } catch (_: Exception) {
+                // 网络日志解析失败不影响主流程
+            }
         }
     }
 }

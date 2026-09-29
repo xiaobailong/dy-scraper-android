@@ -405,11 +405,8 @@ object MetadataExtractor {
             Logger.log("  作者: ${ctx.author}")
             Logger.log("  DOM视频: ${ctx.domVideoUrls.size}  DOM图片: ${ctx.domImageUrls.size}")
             Logger.log("  提取来源: ${ctx.extractSource}")
-
-            ctx
         } catch (e: Exception) {
             Logger.log("[元数据提取] JSON 解析失败: ${e.message}", "error")
-            ctx
         }
 
         // ── SSR / 页面内嵌 JSON 兜底（API 响应拿不到时的关键路径） ──

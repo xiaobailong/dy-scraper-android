@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.PopupMenu
@@ -14,23 +15,21 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.work.Constraints
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
+import com.dy.scraper.core.ScraperEngine
+import com.dy.scraper.core.WebViewManager
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.Logger
 import com.dy.scraper.util.RunMode
 import com.dy.scraper.util.Utils
 import com.dy.scraper.util.YoudaoFetcher
-import com.dy.scraper.worker.ScraperWorker
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var logView: TextView
     private lateinit var scrollView: android.widget.ScrollView
+    private lateinit var scraperWebView: WebView
 
     private var currentMode: RunMode = RunMode.LOCAL
 
@@ -49,6 +48,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnYoudaoStop: Button
 
     private var youdaoUrls: List<String> = emptyList()
+
+    private var webViewManager: WebViewManager? = null
+    private var scrapeJob: Job? = null
 
     /** 日志监听器（保存引用，onDestroy 时移除，避免内存泄漏） */
     private val logListener: (String) -> Unit = { message ->
@@ -78,6 +80,7 @@ class MainActivity : AppCompatActivity() {
 
         scrollView = findViewById(R.id.scrollView)
         logView = findViewById(R.id.logView)
+        scraperWebView = findViewById(R.id.scraperWebView)
 
         llLocalMode = findViewById(R.id.llLocalMode)
         etUrlInput = findViewById(R.id.etUrlInput)
@@ -410,65 +413,55 @@ class MainActivity : AppCompatActivity() {
         if (!Logger.isEnabled()) {
             Logger.d("Log was disabled before scraper start")
         }
-        Logger.logSection("启动抓取任务")
+        Logger.logSection("启动抓取任务（Activity 直接驱动）")
         Logger.log("启动抓取任务，共 ${urls.size} 个 URL")
         Logger.log("  当前模式: ${currentMode.key}")
         urls.forEach { Logger.log("  $it") }
 
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val workRequest = OneTimeWorkRequestBuilder<ScraperWorker>()
-            .setConstraints(constraints)
-            .addTag("dy_scraper")
-            .setInputData(
-                androidx.work.workDataOf(
-                    ScraperWorker.KEY_URLS to urls.joinToString("\n")
-                )
-            )
-            .build()
-
-        WorkManager.getInstance(this)
-            .enqueueUniqueWork(
-                "dy_scraper_work",
-                ExistingWorkPolicy.REPLACE,
-                workRequest
-            )
-
-        Logger.d("WorkManager task enqueued, id=${workRequest.id}")
         updateStartStopButtons(running = true)
 
-        lifecycleScope.launch {
-            WorkManager.getInstance(this@MainActivity)
-                .getWorkInfoByIdLiveData(workRequest.id)
-                .observe(this@MainActivity) { workInfo ->
-                    if (workInfo != null) {
-                        val progress = workInfo.progress
-                        // 任务结束时 WorkManager 会清空 progress → 不再打印 "0/0 (0%)" 噪声
-                        if (progress.keyValueMap.isNotEmpty()) {
-                            val pct = progress.getInt("progress_pct", 0)
-                            val total = progress.getInt("url_total", 0)
-                            val done = progress.getInt("url_current", 0)
-                            Logger.log("进度: $done/$total ($pct%)")
-                        }
+        // 显示 WebView（用户可观察抓取效果）
+        scraperWebView.visibility = View.VISIBLE
 
-                        if (workInfo.state.isFinished) {
-                            Logger.log("WorkManager任务完成, state=${workInfo.state}")
-                            updateStartStopButtons(running = false)
-                        }
-                    }
-                }
+        // 创建 WebViewManager 使用布局中已 attached 的 WebView
+        val wvm = WebViewManager(this, scraperWebView)
+        webViewManager = wvm
+
+        scrapeJob = lifecycleScope.launch {
+            try {
+                val output = ScraperEngine.run(
+                    context = this@MainActivity,
+                    webViewManager = wvm,
+                    input = ScraperEngine.Input(
+                        urls = urls,
+                        reportProgress = { progress ->
+                            Logger.log("进度: ${progress.current}/${progress.total} (${progress.pct}%)")
+                        },
+                    ),
+                )
+                Logger.log("")
+                Logger.log("抓取完成! 成功: ${output.stats.successCount}, 失败: ${output.stats.failedCount}")
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                Logger.log("  抓取任务被用户取消")
+                throw e
+            } catch (e: Exception) {
+                Logger.log("抓取异常: ${e.message}", "error")
+            } finally {
+                scraperWebView.visibility = View.GONE
+                updateStartStopButtons(running = false)
+                webViewManager = null
+            }
         }
     }
 
     private fun stopScraper() {
         Logger.logSection("停止抓取任务")
-        Logger.log("取消所有 dy_scraper 任务...")
-        WorkManager.getInstance(this).cancelUniqueWork("dy_scraper_work")
-        WorkManager.getInstance(this).cancelAllWorkByTag("dy_scraper")
-        Logger.log("  所有抓取任务已取消")
+        Logger.log("取消抓取协程...")
+        scrapeJob?.cancel()
+        scraperWebView.visibility = View.GONE
         updateStartStopButtons(running = false)
+        webViewManager = null
+        Logger.log("  抓取任务已取消")
     }
 
     private fun updateStartStopButtons(running: Boolean) {
@@ -500,6 +493,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Logger.d("========== onDestroy ==========")
+        scrapeJob?.cancel()
+        webViewManager?.destroy()
+        webViewManager = null
         Logger.removeListener(logListener)
         super.onDestroy()
     }

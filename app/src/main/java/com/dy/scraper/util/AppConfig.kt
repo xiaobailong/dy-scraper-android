@@ -8,6 +8,10 @@ object AppConfig {
     const val PREFS_NAME = "dy_scraper_settings"
     const val KEY_URL_DEDUP_ENABLED = "url_dedup_enabled"
 
+    // ── 网络日志（调试用：记录 WebView 所有请求/响应到日志文件） ──
+    const val VERBOSE_NETWORK_LOG = true
+    const val NETWORK_LOG_MAX_BODY_LENGTH = 2000
+
     // ── 存储路径 ──
     var downloadVideoDir: File = File("/storage/emulated/0/Download/dy-scraper/videos")
     var downloadImageDir: File = File("/storage/emulated/0/Download/dy-scraper/images")
@@ -48,7 +52,7 @@ object AppConfig {
         "/aweme/v1/aweme/detail/",
     )
 
-    fun initDirs(context: Context) {
+    fun initDirs() {
         val root = File(android.os.Environment.getExternalStoragePublicDirectory(
             android.os.Environment.DIRECTORY_DOWNLOADS), "dy-scraper")
         downloadVideoDir = File(root, "videos").also { it.mkdirs() }

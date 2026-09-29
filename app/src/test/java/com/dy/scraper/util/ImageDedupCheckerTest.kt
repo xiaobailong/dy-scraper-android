@@ -122,7 +122,9 @@ class ImageDedupCheckerTest {
 
         // Both should survive since they're completely different images
         // (the same minimal JPEG data would have the same pHash though)
+        @Suppress("UNUSED_VARIABLE")
         val r1 = ImageDedupChecker.checkAndDedup(file1, dir)
+        @Suppress("UNUSED_VARIABLE")
         val r2 = if (file2.exists()) ImageDedupChecker.checkAndDedup(file2, dir) else false
         // At minimum, no crash
         assertTrue(true)
