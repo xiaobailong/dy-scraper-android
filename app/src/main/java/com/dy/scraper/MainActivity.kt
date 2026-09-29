@@ -315,6 +315,7 @@ class MainActivity : AppCompatActivity() {
 
                 AppConfig.setUrlDedupEnabled(this, switchUrlDedup.isChecked)
                 AppConfig.setNetworkLogEnabled(this, switchNetworkLog.isChecked)
+                Logger.setNetworkLogEnabled(this, switchNetworkLog.isChecked)
                 Logger.d("Scraper settings dialog: urlDedup=${switchUrlDedup.isChecked} netLog=${switchNetworkLog.isChecked}")
 
                 Toast.makeText(this, R.string.scraper_settings_saved, Toast.LENGTH_SHORT).show()

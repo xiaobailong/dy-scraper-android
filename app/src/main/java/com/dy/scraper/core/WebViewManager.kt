@@ -191,7 +191,7 @@ class WebViewManager(private val context: Context) {
                     "contentType" to contentType,
                 ))
 
-                if (AppConfig.isNetworkLogEnabled(context) && !url.contains("douyinstatic.com")) {
+                if (Logger.isNetworkLogEnabled() && !url.contains("douyinstatic.com")) {
                     val headers = request.requestHeaders.entries
                         .filter { (k, _) -> k.lowercase() in NETWORK_LOG_HEADER_WHITELIST }
                         .joinToString(", ") { (k, v) -> "$k: ${v.take(120)}" }
@@ -214,7 +214,7 @@ class WebViewManager(private val context: Context) {
             @Suppress("OVERRIDE_DEPRECATION")
             override fun onLoadResource(view: WebView, url: String) {
                 super.onLoadResource(view, url)
-                if (AppConfig.isNetworkLogEnabled(context) && !url.contains("douyinstatic.com")) {
+                if (Logger.isNetworkLogEnabled() && !url.contains("douyinstatic.com")) {
                     Logger.log("  [NET:LOADED] ${url.take(200)}", "network")
                 }
             }

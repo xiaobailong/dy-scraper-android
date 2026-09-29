@@ -14,6 +14,7 @@ object Logger {
 
     const val PREFS_NAME = "dy_scraper_settings"
     const val KEY_LOG_ENABLED = "log_enabled"
+    const val KEY_NETWORK_LOG_ENABLED = "network_log_enabled"
 
     private const val TAG = "DyScraper"
     private const val LOG_DIR_NAME = "dy-scraper"
@@ -26,6 +27,7 @@ object Logger {
     private var logFilePath: String = "N/A"
     private var initialized = false
     private var enabled = true
+    private var networkLogEnabled = true
     private val listeners = mutableListOf<(String) -> Unit>()
 
     fun addListener(listener: (String) -> Unit) {
@@ -49,6 +51,7 @@ object Logger {
         val sb = StringBuilder()
 
         enabled = readEnabledFromPrefs(appCtx)
+        networkLogEnabled = readNetworkLogEnabledFromPrefs(appCtx)
 
         val sdk = android.os.Build.VERSION.SDK_INT
         val model = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
@@ -81,6 +84,30 @@ object Logger {
             true
         }
     }
+
+    private fun readNetworkLogEnabledFromPrefs(context: android.content.Context): Boolean {
+        return try {
+            context.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .getBoolean(KEY_NETWORK_LOG_ENABLED, true)
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    fun setNetworkLogEnabled(context: android.content.Context, enabled: Boolean) {
+        this.networkLogEnabled = enabled
+        try {
+            context.applicationContext
+                .getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_NETWORK_LOG_ENABLED, enabled)
+                .apply()
+        } catch (e: Exception) {
+            Log.e(TAG, "Network log setting save failed: ${e.message}")
+        }
+    }
+
+    fun isNetworkLogEnabled(): Boolean = networkLogEnabled
 
     private fun trySetupLog(): String {
         return try {
@@ -187,26 +214,31 @@ object Logger {
     }
 
     fun log(message: String, level: String = "info") {
-        if (!enabled) return
+        // 网络日志开关关闭时，网络日志全部跳过（不写文件、不通知listener）
+        if (level == "network" && !networkLogEnabled) return
+
         val ts = timestampFormat.format(Date())
         val thread = Thread.currentThread().name
         val formatted = "[$ts][$thread] $message"
 
-        when (level) {
-            "error" -> Log.e(TAG, formatted)
-            "warn" -> Log.w(TAG, formatted)
-            "debug" -> Log.d(TAG, formatted)
-            else -> Log.i(TAG, formatted)
+        // 文件写入 + Logcat：受全局日志开关控制
+        if (enabled) {
+            when (level) {
+                "error" -> Log.e(TAG, formatted)
+                "warn" -> Log.w(TAG, formatted)
+                "debug" -> Log.d(TAG, formatted)
+                else -> Log.i(TAG, formatted)
+            }
+            writeLine(formatted)
         }
 
-        writeLine(formatted)
+        // 监听器通知：不受全局日志开关控制（全局关时仅不写文件，界面仍显示）
         synchronized(listeners) {
             listeners.forEach { it(message) }
         }
     }
 
     fun logSection(title: String) {
-        if (!enabled) return
         val sep = "=".repeat(60)
         log(sep)
         log("  $title")
