@@ -21,6 +21,7 @@ object ImageDedupChecker {
         Regex("emoji"),
         Regex("/obj/tos-cn-i-tsj2vxp0zn/"),
         Regex("gif\\.douyinpic\\.com"),
+        Regex("/obj/ies\\.fe\\.effect/"),
     )
 
     fun isCoverUrl(url: String): Boolean {

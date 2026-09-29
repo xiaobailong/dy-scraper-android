@@ -12,7 +12,7 @@ set "ANDROID_HOME=D:\Tools\DevTools\Android\Sdk"
 set "ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk"
 set "PATH=D:\Tools\DevTools\Java\JDK\jdk-21.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
 
-cd /d d:\WorkSpace\Tmp\dy-scraper-android 2>nul || (
+cd /d "%~dp0" 2>nul || (
     echo [错误] 项目目录不存在
     pause
     exit /b 1

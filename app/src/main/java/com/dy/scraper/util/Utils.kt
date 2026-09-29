@@ -46,6 +46,7 @@ object Utils {
         if ("100x100" in lower || "aweme-avatar" in lower) return true
         if (lower.endsWith(".avif") && "douyin" !in domain) return true
         if ("tsj2vxp0zn" in lower && "obj/" in lower) return true
+        if ("ies.fe.effect" in lower && "obj/" in lower) return true
         return false
     }
 
@@ -149,7 +150,7 @@ object Utils {
             val end = if (i + 1 < positions.size) positions[i + 1] else text.length
             var url = text.substring(start, end)
             url = url.replace(Regex("[\u4e00-\u9fff].*$"), "")
-            url = url.trimEnd('.', ',', ';', ':', '!', '?', '，', '。', '）', ')', '】', ']', '}', '"', '\'', '`', '*', '_', '~', ' ', '\t', '\r', '\n')
+            url = url.replace(Regex("[\\]。，；！？：》）】」』,.();:!?'\"`*_~\\s]+$"), "")
             if (url.isNotEmpty() && url.startsWith("http")) {
                 result.add(url)
             }

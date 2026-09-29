@@ -209,7 +209,8 @@ object Downloader {
      * 从网络请求列表提取 URL（对应 extract_urls_from_network）
      */
     fun extractUrlsFromNetwork(collectedRequests: List<Map<String, String>>): Pair<List<String>, List<String>> {
-        val videoPatterns = listOf(".mp4?", ".webm?", ".mov?", "video/mp4", "video/webm")
+        val videoPatterns = listOf(".mp4?", ".webm?", ".mov?", ".m3u8?", "video/mp4", "video/webm")
+        val videoDomains = listOf("douyinvod.com", "ixigua.com", "snssdk.com")
         val imagePatterns = listOf(".jpg?", ".jpeg?", ".png?", ".webp?", ".gif?", "image/")
 
         val videoUrls = mutableListOf<String>()
@@ -225,6 +226,7 @@ object Downloader {
             val lower = url.lowercase()
             when {
                 videoPatterns.any { it in lower || it in contentType } -> videoUrls.add(url)
+                videoDomains.any { it in lower } -> videoUrls.add(url)
                 imagePatterns.any { it in lower || it in contentType } -> imageUrls.add(url)
             }
         }

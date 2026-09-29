@@ -53,7 +53,7 @@ set "GH_EXE=C:\Program Files\GitHub CLI\gh.exe"
 set "GH_REPO=xiaobailong/dy-scraper-android"
 set "JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8"
 
-cd /d d:\WorkSpace\Tmp\dy-scraper-android 2>nul || (
+cd /d "%~dp0" 2>nul || (
     echo [错误] 项目目录不存在
     pause
     exit /b 1
@@ -413,7 +413,7 @@ for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') 
 set /a NEW_CODE=%OLD_CODE% + 1
 echo       版本递增: versionCode %OLD_CODE% -^> %NEW_CODE%
 
-powershell -NoProfile -Command "$v='1.0.%NEW_CODE%'; $ver = Get-Content 'version.properties' -Raw; $ver = $ver -replace 'versionCode=\d+', 'versionCode=%NEW_CODE%'; $ver = $ver -replace 'versionName=[\d.]+', ('versionName='+$v); [System.IO.File]::WriteAllText('version.properties', $ver, [System.Text.UTF8Encoding]::new($true))"
+powershell -NoProfile -ExecutionPolicy Bypass -File "tools\bump-version.ps1" -NewCode %NEW_CODE%
 
 if %ERRORLEVEL% neq 0 (
     exit /b 1
@@ -423,7 +423,7 @@ echo       同步版本到 build.gradle.kts...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
 
-powershell -NoProfile -Command "$g = Get-Content 'app\build.gradle.kts' -Raw; $g = $g -replace '(?m)(^\s*versionCode\s*=\s*)\d+', '${1}%V_CODE%'; $g = $g -replace '(?m)(^\s*versionName\s*=\s*)\""[^\""]*\""', '${1}\""%V_NAME%\""'; [System.IO.File]::WriteAllText('app\build.gradle.kts', $g, [System.Text.UTF8Encoding]::new($true))"
+powershell -NoProfile -ExecutionPolicy Bypass -File "tools\sync-gradle-version.ps1" -VersionName "%V_NAME%" -VersionCode %V_CODE%
 
 if %ERRORLEVEL% neq 0 (
     exit /b 1

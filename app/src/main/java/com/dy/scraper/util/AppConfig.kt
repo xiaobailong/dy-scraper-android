@@ -43,8 +43,13 @@ object AppConfig {
     // ── 抖音 API 路径特征 ──
     val DETAIL_API_PATTERNS = listOf(
         "/aweme/v1/web/aweme/detail/",
+        "/aweme/v1/web/aweme/post/",
+        "/aweme/v1/web/note/detail/",
         "/aweme/v1/web/note/",
         "/aweme/v1/web/user/profile/other/",
+        "/aweme/v1/feed/",
+        "/aweme/v1/aweme/detail/",
+        "/aweme/v1/web/aweme/related/",
     )
 
     fun initDirs(context: Context) {

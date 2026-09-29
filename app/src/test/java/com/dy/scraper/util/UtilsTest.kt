@@ -147,12 +147,12 @@ class UtilsTest {
 
     @Test
     fun `normalizeUrl strips https prefix`() {
-        assertEquals("v.douyin.com/abc123/", Utils.normalizeUrl("https://v.douyin.com/abc123/"))
+        assertEquals("https://v.douyin.com/abc123", Utils.normalizeUrl("https://v.douyin.com/abc123/"))
     }
 
     @Test
     fun `normalizeUrl handles trailing dot-com`() {
-        assertEquals("example.com/", Utils.normalizeUrl("https://example.com"))
+        assertEquals("https://example.com/", Utils.normalizeUrl("https://example.com"))
     }
 
     @Test

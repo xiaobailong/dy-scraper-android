@@ -100,7 +100,8 @@ class UrlProcessor(
         val newDetailUrls = wvm.detailResponses.drop(detailStart).toList()
         Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
         val cookies = wvm.getCookies()
-        val distinctApiUrls = newDetailUrls.distinct().take(3)
+        val distinctApiUrls = newDetailUrls.distinct().take(6)
+        Logger.log("  将尝试 ${distinctApiUrls.size} 个 API URL")
         for (apiUrl in distinctApiUrls) {
             val apiData = DouyinApiCollector.fetchAndParseApiResponse(apiUrl, cookies)
             if (apiData.videoUrls.isNotEmpty()) {

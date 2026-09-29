@@ -41,15 +41,17 @@ object DouyinApiCollector {
 
             val response = client.newCall(requestBuilder.build()).execute()
             if (!response.isSuccessful) {
-                Logger.log("  [API] 请求失败 HTTP ${response.code}: $apiUrl", "warn")
+                Logger.log("  [API] 请求失败 HTTP ${response.code}: ${apiUrl.take(100)}...", "warn")
                 return ApiData()
             }
 
             val body = response.body?.string() ?: return ApiData()
+            Logger.log("  [API] 响应体长度: ${body.length}", "debug")
+
             val json = try {
                 JsonParser.parseString(body).asJsonObject
             } catch (e: Exception) {
-                Logger.log("  [API] JSON 解析失败: ${e.message}", "warn")
+                Logger.log("  [API] JSON 解析失败: ${e.message}, body前100字符: ${body.take(100)}", "warn")
                 return ApiData()
             }
 
@@ -59,19 +61,35 @@ object DouyinApiCollector {
             var authorCode = ""
             var title = ""
 
-            // 尝试 aweme_detail 路径
-            val awemeDetail = json.getAsJsonObject("aweme_detail")
-                ?: json.getAsJsonObject("aweme")?.getAsJsonObject("detail")
+            // 支持 data 包裹层: {"data": {"aweme_detail": {...}}}
+            val root = json.getAsJsonObject("data") ?: json
+
+            // 1) 尝试 aweme_detail 直接路径
+            var awemeDetail = root.getAsJsonObject("aweme_detail")
+                ?: root.getAsJsonObject("aweme")?.getAsJsonObject("detail")
+
+            // 2) 尝试 aweme_list 数组（取第一条）
+            if (awemeDetail == null) {
+                val awemeList = root.getAsJsonArray("aweme_list")
+                if (awemeList != null && awemeList.size() > 0) {
+                    awemeDetail = awemeList.get(0).asJsonObject.getAsJsonObject("aweme_info")
+                        ?: awemeList.get(0).asJsonObject
+                }
+            }
 
             if (awemeDetail != null) {
-                // 视频 URL
+                Logger.log("  [API解析] 找到 aweme_detail", "debug")
                 val video = awemeDetail.getAsJsonObject("video")
                 if (video != null) {
-                    val playAddr = video.getAsJsonObject("play_addr")
-                    if (playAddr != null) {
-                        val urlList = playAddr.getAsJsonArray("url_list")
-                        if (urlList != null && urlList.size() > 0) {
-                            videoUrls.addAll(urlList.map { it.asString })
+                    // play_addr (无水印)
+                    extractUrlList(video, "play_addr", videoUrls)
+                    // play_addr_h264 (备用)
+                    extractUrlList(video, "play_addr_h264", videoUrls)
+                    // bit_rate 数组（多码率，取最高清）
+                    val bitRate = video.getAsJsonArray("bit_rate")
+                    if (bitRate != null && bitRate.size() > 0) {
+                        for (br in bitRate) {
+                            extractUrlList(br.asJsonObject, "play_addr", videoUrls)
                         }
                     }
                 }
@@ -82,15 +100,16 @@ object DouyinApiCollector {
                     for (img in images) {
                         val urlList = img.asJsonObject.getAsJsonArray("url_list")
                         if (urlList != null && urlList.size() > 0) {
-                            imageUrls.add(urlList.last().asString) // 最大尺寸
+                            imageUrls.add(urlList.last().asString)
                         }
                     }
                 }
 
                 // 封面
-                val cover = awemeDetail.getAsJsonObject("video")?.getAsJsonObject("cover")
-                if (cover != null) {
-                    val coverUrlList = cover.getAsJsonArray("url_list")
+                extractUrlList(video?.getAsJsonObject("cover"), null, imageUrls)
+                val coverObj = awemeDetail.getAsJsonObject("video")?.getAsJsonObject("cover")
+                if (coverObj != null) {
+                    val coverUrlList = coverObj.getAsJsonArray("url_list")
                     if (coverUrlList != null && coverUrlList.size() > 0) {
                         imageUrls.add(coverUrlList.last().asString)
                     }
@@ -109,30 +128,34 @@ object DouyinApiCollector {
                 title = awemeDetail.get("desc")?.asString ?: ""
             }
 
-            // 尝试 note_detail 路径（笔记/图集）
-            val noteDetail = json.getAsJsonObject("note_detail")
-                ?: json.getAsJsonObject("note")
-            if (noteDetail != null && imageUrls.isEmpty()) {
-                val images = noteDetail.getAsJsonArray("images")
-                    ?: noteDetail.getAsJsonObject("image_list")?.getAsJsonArray("images")
-                if (images != null) {
-                    for (img in images) {
-                        val urlList = img.asJsonObject.getAsJsonArray("url_list")
-                        if (urlList != null && urlList.size() > 0) {
-                            imageUrls.add(urlList.last().asString)
+            // 3) 尝试 note_detail 路径（笔记/图集）
+            if (awemeDetail == null || imageUrls.isEmpty()) {
+                val noteDetail = root.getAsJsonObject("note_detail")
+                    ?: root.getAsJsonObject("note")
+                if (noteDetail != null) {
+                    val images = noteDetail.getAsJsonArray("images")
+                        ?: noteDetail.getAsJsonObject("image_list")?.getAsJsonArray("images")
+                    if (images != null) {
+                        for (img in images) {
+                            val urlList = img.asJsonObject.getAsJsonArray("url_list")
+                            if (urlList != null && urlList.size() > 0) {
+                                imageUrls.add(urlList.last().asString)
+                            }
                         }
                     }
-                }
 
-                val authorObj = noteDetail.getAsJsonObject("author")
-                if (authorObj != null) {
-                    author = authorObj.get("nickname")?.asString ?: author
-                    authorCode = authorObj.get("unique_id")?.asString
-                        ?: authorObj.get("short_id")?.asString
-                        ?: authorCode
-                }
+                    val authorObj = noteDetail.getAsJsonObject("author")
+                    if (authorObj != null) {
+                        author = authorObj.get("nickname")?.asString ?: author
+                        authorCode = authorObj.get("unique_id")?.asString
+                            ?: authorObj.get("short_id")?.asString
+                            ?: authorCode
+                    }
 
-                title = noteDetail.get("desc")?.asString ?: title
+                    if (title.isEmpty()) {
+                        title = noteDetail.get("desc")?.asString ?: ""
+                    }
+                }
             }
 
             Logger.log("  [API解析] 视频: ${videoUrls.size}, 图片: ${imageUrls.size}, 作者: $author")
@@ -146,6 +169,20 @@ object DouyinApiCollector {
         } catch (e: Exception) {
             Logger.log("  [API] 请求异常: ${e.message}", "warn")
             return ApiData()
+        }
+    }
+
+    private fun extractUrlList(parent: com.google.gson.JsonObject?, field: String?, urls: MutableList<String>) {
+        if (parent == null) return
+        val obj = if (field != null) parent.getAsJsonObject(field) ?: return else parent
+        val urlList = obj.getAsJsonArray("url_list")
+        if (urlList != null && urlList.size() > 0) {
+            for (url in urlList) {
+                val s = url.asString
+                if (s.isNotBlank() && s.startsWith("http")) {
+                    urls.add(s)
+                }
+            }
         }
     }
 
