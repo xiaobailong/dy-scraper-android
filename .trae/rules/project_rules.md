@@ -65,20 +65,19 @@ dy-scraper-android/
 - 跨运行: `ScraperWorker.filterProcessedUrls()` 按归一化 URL + DB 检查
 
 ### 终端管理（强制）
-- **终端标签名**：依赖 `.vscode/settings.json` 中 `"terminal.integrated.tabs.title": "dy-scraper"` 配置，所有新终端标签统一显示为 `dy-scraper`（而非默认的 `cmd`），便于快速识别项目终端。
-- **终端内容标识（必须）**：标签名统一无法区分不同终端，因此每个新终端打开后首条命令必须是标识头：
+- **终端标签名**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "dy-scraper"`，所有新终端标签统一显示为 `dy-scraper`。
+- **终端内容标识（必须）**：每个新终端首条命令必须是标识头：
   ```cmd
   echo === task-N-用途 ===
   ```
   - `N` 为递增序号（从 1 开始，本次请求范围内唯一）
-  - `用途` 为简短英文描述（如 build、git、test、cleanup）
-  - 示例：`echo === task-1-build ===`、`echo === task-2-git ===`
-- **终端复用**：执行命令时必须复用已有的终端，不要为每个命令都打开新终端；仅在没有可用终端时才新建一个
-- **终端自动清理（强制）**：每完成一个用户请求后，必须立即清理本次请求中打开的所有终端。方法：
-  - 获取当前终端父进程 PID：`powershell -NoProfile -Command "(Get-WmiObject Win32_Process -Filter ProcessId=$pid).ParentProcessId"`
-  - 批量关闭非当前终端：`Get-Process cmd | Where-Object { $_.Id -ne $currentParent } | Stop-Process -Force`
-  - 最后关闭当前终端：`for /f "delims=" %a in ('powershell ...ParentProcessId') do taskkill /f /pid %a`
-  - **禁止用 `taskkill /f /im cmd.exe`**，会误伤用户自己的 cmd
+  - `用途` 为简短英文描述（如 build、git、test）
+- **终端自关闭（强制）**：由于 `target_terminal` 复用不生效（每次必开新终端），唯一可靠的清理方式是让终端自己关闭自己 —— 每条命令末尾加 `& exit`：
+  ```cmd
+  echo === task-1-git === && cd /d "d:\..." && git status & exit
+  ```
+  构建命令用 `.bat` + `Start-Process` 异步启动（bat 末尾加 `exit`），启动命令也加 `& exit`。
+- **禁止主动杀进程**：`taskkill /f /im cmd.exe` 会误伤用户自己的 cmd；基于 RunCommand 的杀进程方案（获取 PID → taskkill）同样会开新终端，越清越多。仅依赖 `& exit` 自关闭。
 
 ### 临时文件管理（强制）
 - 所有构建输出、日志写到项目根目录下的临时文件（如 `build_out.txt`, `build_test.bat` 等）

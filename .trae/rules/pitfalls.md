@@ -4,31 +4,28 @@
 
 ## 已记录坑点
 
-### 1. RunCommand 无法复用已有终端 + 终端清理时机
+### 1. RunCommand 无法复用已有终端 + 终端清理不可靠
 - **现象**：
-  1. 执行命令时指定 `target_terminal` 为上一次返回的终端 ID，系统仍然会新开一个终端，导致终端数量不断增加。
-  2. 终端清理不及时，需要用户提醒才清理，导致终端大量堆积。
+  1. 执行命令时指定 `target_terminal` 为上一次返回的终端 ID，系统仍然会新开一个终端。
+  2. 每个 `RunCommand` 都会打开一个新终端，包括清理终端自身的命令，导致终端越清越多。
+  3. 上上个会话结束时开了 20+ 个终端，清理命令（获取 PID、taskkill）全部都开了新终端。
 - **原因**：
-  1. 当前环境中 `target_terminal` 参数指定已有 ID 时未生效，每次调用都会分配新终端。
-  2. 清理时机规则不明确，"对话结束前"容易被理解为整个会话结束而非每个用户请求完成后。
+  1. `target_terminal` 参数指定已有 ID 时未生效，每次调用都分配新终端——这是工具层面的限制，无法通过规则规避。
+  2. 任何基于 `RunCommand` 的终端清理方案（杀进程、自杀式关闭）都不可靠，因为清理命令本身也会开新终端。
+  3. cmd 终端不能执行 PowerShell 语法（坑点 #2），但原来的清理方法推荐了 PowerShell 命令。
 - **解决方案/规避**：
-  - 无法在工具层面强制复用，只能尽量减少不必要的命令调用。
-  - **终端命名（必须启用）**：每个新终端打开后首条命令必须是标识头：
+  - **接受现实**：无法在工具层面强制复用或清理终端。
+  - **唯一可靠方案 —— 命令末尾 `& exit` 自关闭**：
+    - 所有短命令（git、echo 等）末尾加 `& exit`，命令执行完终端自动关闭。
+    - 构建命令：通过 `.bat` + `Start-Process` 异步启动（bat 末尾加 `exit`），当前终端发完 Start-Process 后也 `& exit`。
+    - 格式：`command args & exit`（cmd 语法，注意是 `&` 不是 `;`）。
+  - **终端命名（必须）**：每个新终端首条命令必须是标识头：
     ```cmd
     echo === task-N-用途 ===
     ```
-    N 为递增序号，用途为简短英文描述（如 build、clean、git）。
-  - **终端清理强制时机**：每完成一个用户请求（用户的最后一条消息处理完毕后），必须立即清理本次打开的所有终端，不要等待用户提醒。
-  - **关闭终端的有效方法**：
-    - 方法一（推荐，按 PID 精确关闭）：
-      - 获取当前终端 PID：`powershell -NoProfile -Command "(Get-WmiObject Win32_Process -Filter ProcessId=$pid).ParentProcessId"`
-      - 记住每个终端的 PID，清理时用 `taskkill /f /pid <PID>` 精确关闭，不会误伤用户自己的 cmd。
-      - **批量关闭非当前终端**：`Get-Process cmd | Where-Object { $_.Id -ne $currentParent } | Stop-Process -Force`
-      - **自杀式一键关闭**（最后一个终端用）：`for /f "delims=" %a in ('powershell -NoProfile -Command "(Get-WmiObject Win32_Process -Filter ProcessId=$pid).ParentProcessId"') do taskkill /f /pid %a`
-    - 方法二（慎用）：用 `taskkill /f /im cmd.exe` 杀掉所有 cmd 进程，可一次性清理大量堆积的终端。**注意：会杀掉所有 cmd（包括用户自己开的），仅在堆积严重且确认无误伤时使用。**
-    - 方法三：命令末尾加 `& exit`（cmd）或 `; exit`（PowerShell），命令执行完后终端自动关闭。
+  - **用户手动关闭**：VSCode 终端面板右键 → 关闭，或点击终端标签上的 ×。由于命令末尾 `& exit` 已自动关闭大部分终端，残留量会大幅减少。
+  - **禁止使用 `taskkill /f /im cmd.exe`**，会误伤用户自己的 cmd。
   - `StopCommand` 只能停止正在运行的命令，不会关闭终端会话。
-  - 用户也可手动关闭 VSCode 终端面板中多余的终端标签。
 
 ### 2. cmd 终端中使用 PowerShell 语法会报错
 - **现象**：在 cmd 终端中执行 `#` 开头的注释或 `2>$null` 等 PowerShell 语法，会报 `'#' is not recognized as an internal or external command`。
