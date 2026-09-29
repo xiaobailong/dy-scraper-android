@@ -7,6 +7,7 @@ object AppConfig {
 
     const val PREFS_NAME = "dy_scraper_settings"
     const val KEY_URL_DEDUP_ENABLED = "url_dedup_enabled"
+    const val KEY_KEEP_SCREEN_ON_ENABLED = "keep_screen_on_enabled"
 
     // ── 网络日志（调试用：记录 WebView 所有请求/响应到日志文件） ──
     const val VERBOSE_NETWORK_LOG = true
@@ -79,6 +80,25 @@ object AppConfig {
             context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 .edit()
                 .putBoolean(KEY_URL_DEDUP_ENABLED, enabled)
+                .apply()
+        } catch (_: Exception) {
+        }
+    }
+
+    fun isKeepScreenOnEnabled(context: Context): Boolean {
+        return try {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .getBoolean(KEY_KEEP_SCREEN_ON_ENABLED, true)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    fun setKeepScreenOnEnabled(context: Context, enabled: Boolean) {
+        try {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_KEEP_SCREEN_ON_ENABLED, enabled)
                 .apply()
         } catch (_: Exception) {
         }

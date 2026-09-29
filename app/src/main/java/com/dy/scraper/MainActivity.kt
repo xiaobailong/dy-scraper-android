@@ -140,6 +140,10 @@ class MainActivity : AppCompatActivity() {
                     showUrlDedupSettingsDialog()
                     true
                 }
+                R.id.action_screen_on_settings -> {
+                    showScreenOnSettingsDialog()
+                    true
+                }
                 R.id.action_youdao_url_settings -> {
                     showYoudaoUrlSettingsDialog()
                     true
@@ -200,6 +204,30 @@ class MainActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle(R.string.settings_url_dedup_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showScreenOnSettingsDialog() {
+        Logger.d("Screen-on settings dialog: opened")
+        val dialogView = layoutInflater.inflate(R.layout.dialog_screen_on_settings, null)
+        val switchScreenOn = dialogView.findViewById<SwitchCompat>(R.id.switchScreenOn)
+
+        switchScreenOn.isChecked = AppConfig.isKeepScreenOnEnabled(this)
+
+        switchScreenOn.setOnCheckedChangeListener { _, isChecked ->
+            AppConfig.setKeepScreenOnEnabled(this, isChecked)
+            Logger.d("Screen-on settings dialog: screen-on changed to $isChecked")
+            Toast.makeText(
+                this,
+                if (isChecked) R.string.settings_screen_on_on else R.string.settings_screen_on_off,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.settings_screen_on_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
             .show()
@@ -421,8 +449,10 @@ class MainActivity : AppCompatActivity() {
 
         updateStartStopButtons(running = true)
 
-        // 抓取过程中保持屏幕常亮，防止锁屏中断
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // 抓取过程中保持屏幕常亮，防止锁屏中断（受设置开关控制）
+        if (AppConfig.isKeepScreenOnEnabled(this)) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
 
         // 显示 WebView（用户可观察抓取效果）
         scraperWebView.visibility = View.VISIBLE
@@ -453,7 +483,9 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 scraperWebView.visibility = View.GONE
                 updateStartStopButtons(running = false)
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                if (AppConfig.isKeepScreenOnEnabled(this@MainActivity)) {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
                 webViewManager = null
             }
         }
@@ -465,7 +497,9 @@ class MainActivity : AppCompatActivity() {
         scrapeJob?.cancel()
         scraperWebView.visibility = View.GONE
         updateStartStopButtons(running = false)
-        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (AppConfig.isKeepScreenOnEnabled(this)) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         webViewManager = null
         Logger.log("  抓取任务已取消")
     }

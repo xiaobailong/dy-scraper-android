@@ -27,6 +27,13 @@
     <string name="settings_url_dedup_on">URL去重已开启</string>
     <string name="settings_url_dedup_off">URL去重已关闭</string>
 
+    <string name="settings_screen_on">防锁屏</string>
+    <string name="settings_screen_on_title">防锁屏设置</string>
+    <string name="settings_screen_on_label">防锁屏</string>
+    <string name="settings_screen_on_hint">开启后抓取过程中保持屏幕常亮，防止锁屏中断；关闭后允许正常锁屏</string>
+    <string name="settings_screen_on_on">防锁屏已开启</string>
+    <string name="settings_screen_on_off">防锁屏已关闭</string>
+
     <string name="settings_youdao_url_title">有道文档地址</string>
     <string name="settings_youdao_url_hint">请输入有道云笔记文档 API 地址</string>
     <string name="settings_youdao_url_saved">有道文档地址已保存</string>
