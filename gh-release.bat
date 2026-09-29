@@ -105,12 +105,12 @@ if not exist "version.properties" (
 )
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
-if "%GH_TAG%"=="" set "GH_TAG=v%V_NAME%-b%V_CODE%"
+if "%GH_TAG%"=="" set "GH_TAG=v%V_NAME%"
 if "%GH_TAG%"=="v" (
     echo [错误] 读不到 versionName，无法推断标签，请显式传入标签
     goto :fail
 )
-echo       版本: %GH_TAG% （build %V_CODE%）
+echo       版本: %GH_TAG%
 
 echo [3/6] 读取最后一个提交...
 for /f "delims=" %%i in ('git log -1 --oneline') do set "GH_COMMIT=%%i"
@@ -127,7 +127,7 @@ set "GH_COMMIT=%GH_COMMIT:<=/%"
 set "GH_COMMIT=%GH_COMMIT:>=/%"
 for /f "delims=" %%i in ('git rev-parse HEAD') do set "HEAD_SHA=%%i"
 for /f "delims=" %%i in ('git rev-parse --abbrev-ref HEAD') do set "HEAD_BRANCH=%%i"
-set "GH_NOTES=dy-scraper-android %GH_TAG% (build %V_CODE%) | %GH_COMMIT%"
+set "GH_NOTES=dy-scraper-android %GH_TAG% | %GH_COMMIT%"
 echo       提交: %GH_COMMIT%
 echo       分支: %HEAD_BRANCH%
 
@@ -379,7 +379,7 @@ REM  then app\build\outputs\apk\debug\*.apk
 REM ============================================
 :find_apk
 set "APK_PATH="
-for %%f in ("dy-scraper-android-v%V_NAME%-%V_CODE%.apk") do if exist "%%~f" set "APK_PATH=%%~f"
+for %%f in ("dy-scraper-v%V_NAME%.apk") do if exist "%%~f" set "APK_PATH=%%~f"
 if not "%APK_PATH%"=="" exit /b 0
 for %%f in (*.apk) do if exist "%%~f" set "APK_PATH=%%~f"
 if not "%APK_PATH%"=="" exit /b 0

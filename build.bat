@@ -176,14 +176,14 @@ if errorlevel 1 (
 echo       读取版本信息...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
-set "TAG=v%V_NAME%-b%V_CODE%"
+set "TAG=v%V_NAME%"
 echo       版本: %TAG% (name=%V_NAME%, code=%V_CODE%)
 
 echo       提交版本变更...
 call git add version.properties app/build.gradle.kts
 call git diff --cached --quiet
 if errorlevel 1 (
-    call git commit -m "release: %TAG% (build %V_CODE%)"
+    call git commit -m "release: %TAG%"
 
     echo       推送代码...
     call :git_push main
@@ -194,7 +194,7 @@ if errorlevel 1 (
     )
 
     echo       创建标签 %TAG%...
-    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+    call git tag -f -a "%TAG%" -m "Release %TAG%"
     call :git_push "%TAG%"
     if errorlevel 1 (
         echo       [警告] 普通推送标签失败，改用强制推送...
@@ -229,7 +229,7 @@ if errorlevel 1 (
     )
 
     echo       创建/更新标签 %TAG%...
-    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%" 2>nul
+    call git tag -f -a "%TAG%" -m "Release %TAG%" 2>nul
     call :git_push "%TAG%" force
     if errorlevel 1 (
         echo [错误] tag push 失败！
@@ -293,7 +293,7 @@ echo       完成。
 echo [4/6] 读取版本信息...
 for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
 for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
-set "TAG=v%V_NAME%-b%V_CODE%"
+set "TAG=v%V_NAME%"
 echo       版本: %TAG% (name=%V_NAME%, code=%V_CODE%)
 
 echo [5/6] 编译APK...
@@ -328,7 +328,7 @@ echo       提交版本变更...
 call git add version.properties app/build.gradle.kts
 call git diff --cached --quiet
 if errorlevel 1 (
-    call git commit -m "release: %TAG% (build %V_CODE%)"
+    call git commit -m "release: %TAG%"
 
     echo       推送代码...
     call :git_push main
@@ -339,7 +339,7 @@ if errorlevel 1 (
     )
 
     echo       创建标签 %TAG%...
-    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%"
+    call git tag -f -a "%TAG%" -m "Release %TAG%"
     call :git_push "%TAG%"
     if errorlevel 1 (
         echo       [警告] 普通推送标签失败，改用强制推送...
@@ -374,7 +374,7 @@ if errorlevel 1 (
     )
 
     echo       创建/更新标签 %TAG%...
-    call git tag -f -a "%TAG%" -m "Release %TAG% - build %V_CODE%" 2>nul
+    call git tag -f -a "%TAG%" -m "Release %TAG%" 2>nul
     call :git_push "%TAG%" force
     if errorlevel 1 (
         echo [错误] tag push 失败！
@@ -488,7 +488,7 @@ exit /b 1
 
 REM ============================================
 REM  创建 / 覆盖 GitHub Release 并上传 APK（子过程，可重复执行）
-REM  依赖: %GH_EXE% %GH_REPO% %TAG% %V_CODE% %APK_PATH%
+REM  依赖: %GH_EXE% %GH_REPO% %TAG% %APK_PATH%
 REM ============================================
 :gh_release
 if "%APK_PATH%"=="" (
@@ -504,7 +504,7 @@ if errorlevel 1 (
     echo       创建 Release %TAG% 并上传 APK...
     "%GH_EXE%" release create "%TAG%" "%APK_PATH%" ^
         --title "%TAG%" ^
-        --notes "dy-scraper-android %TAG% (build %V_CODE%)" ^
+        --notes "dy-scraper-android %TAG%" ^
         --repo "%GH_REPO%"
 ) else (
     echo       Release %TAG% 已存在，清理旧 APK 资产后重新上传...
@@ -520,7 +520,7 @@ if errorlevel 1 (
     )
     "%GH_EXE%" release edit "%TAG%" ^
         --title "%TAG%" ^
-        --notes "dy-scraper-android %TAG% (build %V_CODE%)" ^
+        --notes "dy-scraper-android %TAG%" ^
         --repo "%GH_REPO%" >nul 2>&1
     echo       上传新 APK...
     "%GH_EXE%" release upload "%TAG%" "%APK_PATH%" --repo "%GH_REPO%"

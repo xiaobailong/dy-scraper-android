@@ -53,7 +53,15 @@ object Utils {
     fun md5(file: File): String? {
         return try {
             val digest = MessageDigest.getInstance("MD5")
-            digest.update(file.readBytes())
+            // 流式读取：视频动辄几百 MB，readBytes() 会直接把内存打爆（Android 堆 128~256MB）
+            file.inputStream().use { input ->
+                val buffer = ByteArray(256 * 1024)
+                while (true) {
+                    val n = input.read(buffer)
+                    if (n <= 0) break
+                    digest.update(buffer, 0, n)
+                }
+            }
             digest.digest().joinToString("") { "%02x".format(it) }
         } catch (_: Exception) {
             null
@@ -119,8 +127,9 @@ object Utils {
 
     fun isAudioUrl(url: String): Boolean {
         val audioExts = setOf(".mp3", ".wav", ".aac", ".ogg", ".m4a", ".flac", ".wma", ".opus")
-        val lower = url.lowercase()
-        return audioExts.any { lower.endsWith(it) || "$it?" in lower }
+        // 只看路径部分，避免 query 里的参数干扰（如 ...xxx.mp3?is_ssr=1）
+        val path = url.lowercase().substringBefore("?").substringBefore("#")
+        return audioExts.any { path.endsWith(it) }
     }
 
     fun extractIdFromUrl(url: String): String? {

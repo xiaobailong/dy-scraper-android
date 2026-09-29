@@ -213,6 +213,7 @@ object Logger {
         log(sep)
     }
 
+    @Synchronized
     private fun writeLine(line: String) {
         if (!enabled) return
         val text = line + "\n"

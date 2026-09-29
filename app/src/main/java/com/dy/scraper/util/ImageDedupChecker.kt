@@ -7,7 +7,9 @@ import java.io.File
 object ImageDedupChecker {
 
     private const val EMOJI_MAX_SIZE = 400
-    private const val PHASH_HAMMING_THRESHOLD = 4
+
+    /** Hamming 距离阈值（对齐 Python 版 `image_dedup.check_and_dedup(hamming_threshold=5)`） */
+    private const val PHASH_HAMMING_THRESHOLD = 5
 
     private val COVER_PATTERNS = listOf(
         Regex("[?&]cover="),
@@ -61,33 +63,24 @@ object ImageDedupChecker {
                 inJustDecodeBounds = true
             }
             BitmapFactory.decodeFile(file.absolutePath, decodeOptions)
+            if (decodeOptions.outWidth <= 0 || decodeOptions.outHeight <= 0) return null
+
             val options = BitmapFactory.Options().apply {
                 inSampleSize = calculateInSampleSize(decodeOptions)
             }
             val bitmap = BitmapFactory.decodeFile(file.absolutePath, options)
                 ?: return null.also { Logger.d("ImageDedup: computePHash failed to decode ${file.name}") }
-            val scaled = Bitmap.createScaledBitmap(bitmap, 8, 8, true)
+
+            val scaled = Bitmap.createScaledBitmap(bitmap, PHash.SAMPLE_SIZE, PHash.SAMPLE_SIZE, true)
             bitmap.recycle()
 
-            val pixels = IntArray(64)
-            scaled.getPixels(pixels, 0, 8, 0, 0, 8, 8)
+            val pixels = IntArray(PHash.SAMPLE_SIZE * PHash.SAMPLE_SIZE)
+            scaled.getPixels(pixels, 0, PHash.SAMPLE_SIZE, 0, 0, PHash.SAMPLE_SIZE, PHash.SAMPLE_SIZE)
             scaled.recycle()
 
-            val grayPixels = pixels.map { pixel ->
-                val r = (pixel shr 16) and 0xFF
-                val g = (pixel shr 8) and 0xFF
-                val b = pixel and 0xFF
-                (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-            }
-            val avg = grayPixels.average()
-            var hash = 0L
-            for (i in grayPixels.indices) {
-                if (grayPixels[i] > avg) {
-                    hash = hash or (1L shl (63 - i))
-                }
-            }
-            // 返回 16 进制字符串
-            String.format("%016x", hash)
+            // 真正的 DCT pHash（对齐 Python imagehash.phash）——
+            // 旧实现是 aHash，对同场景不同照片区分度太低，会误删（见 PHash 注释）
+            PHash.hash(PHash.toGray(pixels))
         } catch (_: Exception) {
             null
         }

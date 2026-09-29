@@ -96,19 +96,23 @@ class UrlProcessor(
         ctx.networkImageUrls = netImages
         ctx.pushStage("extract_network")
 
-        // 从 API 响应提取视频/图片 URL
-        // 优先使用 WebView JS fetch（共享 Cookie 会话），失败时回退到 OkHttp
+        // ── 详情 API 响应（主路径：document-start 钩子旁听页面自己发出的请求体） ──
         val newDetailUrls = wvm.detailResponses.drop(detailStart).toList()
         Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
-        val distinctApiUrls = newDetailUrls.distinct().take(6)
-        Logger.log("  将尝试 ${distinctApiUrls.size} 个 API URL（优先 JS fetch）")
-        for (apiUrl in distinctApiUrls) {
-            // 主路径：WebView JS fetch（共享 Cookie）
-            val apiData = DouyinApiCollector.fetchAndParseApiResponseViaJs(wvm, apiUrl)
-            if (apiData.videoUrls.isNotEmpty() || apiData.imageUrls.isNotEmpty()) {
-                if (apiData.videoUrls.isNotEmpty()) {
-                    ctx.apiVideoUrls = apiData.videoUrls
-                }
+
+        val bodies = wvm.waitForDetailBodies(8000L)
+        Logger.log("  [主路径] Hook 旁听到 ${bodies.size} 个详情 API 响应体")
+        if (bodies.isEmpty() && !PageHook.ENABLE_REPLAY_FALLBACK) {
+            Logger.log(
+                "  ⚠ Hook 未捕获到详情响应体（重放兜底已关闭：重放缺 a_bogus 拿不到 body），" +
+                        "只能靠 SSR/DOM/网络请求兜底",
+                "warn"
+            )
+        }
+        if (bodies.isNotEmpty()) {
+            val apiData = DouyinApiCollector.parseAllBodies(bodies, finalUrl)
+            if (apiData.hasMedia) {
+                if (apiData.videoUrls.isNotEmpty()) ctx.apiVideoUrls = apiData.videoUrls
                 if (apiData.imageUrls.isNotEmpty()) {
                     ctx.apiImageUrls = (ctx.apiImageUrls + apiData.imageUrls).distinct()
                 }
@@ -116,20 +120,37 @@ class UrlProcessor(
                     ctx.author = apiData.author
                     ctx.authorCode = apiData.authorCode
                 }
-            } else {
-                // 回退路径：OkHttp（可能因 Cookie 缺失而失败）
-                Logger.log("  JS fetch 未获取到结果，回退到 OkHttp...", "debug")
-                val okData = DouyinApiCollector.fetchAndParseApiResponse(apiUrl, wvm.getCookies())
-                if (okData.videoUrls.isNotEmpty()) {
-                    ctx.apiVideoUrls = okData.videoUrls
+                if (ctx.title.isEmpty() && apiData.title.isNotEmpty()) ctx.title = apiData.title
+                if (ctx.coverUrl.isEmpty() && apiData.coverUrl.isNotEmpty()) ctx.coverUrl = apiData.coverUrl
+            }
+        }
+
+        // 兜底：重放请求（默认关闭 —— 缺 a_bogus 签名，body 恒为空或整页 HTML，还会二次触发风控）
+        if (PageHook.ENABLE_REPLAY_FALLBACK && ctx.apiVideoUrls.isEmpty() && ctx.apiImageUrls.isEmpty()) {
+            val distinctApiUrls = newDetailUrls.distinct().take(6)
+            for (apiUrl in distinctApiUrls) {
+                val apiData = DouyinApiCollector.fetchAndParseApiResponseViaJs(wvm, apiUrl, finalUrl)
+                if (apiData.hasMedia) {
+                    if (apiData.videoUrls.isNotEmpty()) ctx.apiVideoUrls = apiData.videoUrls
+                    if (apiData.imageUrls.isNotEmpty()) {
+                        ctx.apiImageUrls = (ctx.apiImageUrls + apiData.imageUrls).distinct()
+                    }
+                    if (apiData.author.isNotEmpty() && ctx.author.isEmpty()) {
+                        ctx.author = apiData.author
+                        ctx.authorCode = apiData.authorCode
+                    }
+                    if (ctx.title.isEmpty() && apiData.title.isNotEmpty()) ctx.title = apiData.title
+                    if (apiData.videoUrls.isNotEmpty()) break
                 }
-                if (okData.imageUrls.isNotEmpty()) {
-                    ctx.apiImageUrls = (ctx.apiImageUrls + okData.imageUrls).distinct()
-                }
-                if (okData.author.isNotEmpty() && ctx.author.isEmpty()) {
-                    ctx.author = okData.author
-                    ctx.authorCode = okData.authorCode
-                }
+            }
+        }
+        if (PageHook.ENABLE_REPLAY_FALLBACK && ctx.apiVideoUrls.isEmpty() && newDetailUrls.isNotEmpty()) {
+            val okData = DouyinApiCollector.fetchAndParseApiResponse(
+                newDetailUrls.first(), wvm.getCookies(), finalUrl
+            )
+            if (okData.videoUrls.isNotEmpty()) ctx.apiVideoUrls = okData.videoUrls
+            if (okData.imageUrls.isNotEmpty() && ctx.apiImageUrls.isEmpty()) {
+                ctx.apiImageUrls = okData.imageUrls
             }
         }
 
@@ -157,6 +178,7 @@ class UrlProcessor(
             maxWorkers = AppConfig.MAX_VIDEO_WORKERS,
             md5Registry = md5Registry,
             videoHashRegistry = videoHashRegistry,
+            cookies = wvm.getCookies(),
         )
         val videoDone = ctx.videoResults.count { it.status == "downloaded" }
         val videoSkip = ctx.videoResults.size - videoDone
@@ -168,6 +190,7 @@ class UrlProcessor(
             ctx, AppConfig.downloadImageDir, "image",
             maxWorkers = AppConfig.MAX_IMAGE_WORKERS,
             md5Registry = md5Registry,
+            cookies = wvm.getCookies(),
         )
         val imgDone = ctx.imageResults.count { it.status == "downloaded" }
         val imgSkip = ctx.imageResults.size - imgDone
@@ -216,15 +239,21 @@ class UrlProcessor(
         return Pair(true, "")
     }
 
-    // ── URL 合并 ──
+    // ── URL 合并（优先级：API > SSR > DOM+网络请求，对应 Python _merge_urls） ──
     private fun mergeUrls(ctx: PageContext) {
-        // 视频 URL 合并（优先级：API > DOM > 网络请求）
-        val rawVideoUrls = if (ctx.apiVideoUrls.isNotEmpty()) {
-            Logger.log("  API获取到 ${ctx.apiVideoUrls.size} 个视频链接（高清），优先使用")
-            ctx.apiVideoUrls
-        } else {
-            Logger.log("  API未获取到视频链接，退到DOM+网络请求")
-            ctx.domVideoUrls + ctx.networkVideoUrls
+        val rawVideoUrls = when {
+            ctx.apiVideoUrls.isNotEmpty() -> {
+                Logger.log("  API获取到 ${ctx.apiVideoUrls.size} 个视频链接（高清），优先使用")
+                ctx.apiVideoUrls
+            }
+            ctx.ssrVideoUrls.isNotEmpty() -> {
+                Logger.log("  API未获取到视频链接，使用 SSR/页面内嵌数据 ${ctx.ssrVideoUrls.size} 个")
+                ctx.ssrVideoUrls
+            }
+            else -> {
+                Logger.log("  API/SSR均未获取到视频链接，退到DOM+网络请求")
+                ctx.domVideoUrls + ctx.networkVideoUrls
+            }
         }
 
         val videoDeduped = Downloader.deduplicateVideos(rawVideoUrls.distinct())
@@ -242,9 +271,10 @@ class UrlProcessor(
         Logger.log("  去重后视频URL: ${videoDeduped.size} 个 → 过滤掉 $videoFilteredCount 个 → 最终 ${ctx.videoUrls.size} 个 (来源: $videoSource)")
 
         // 图片 URL 合并
-        val rawImageUrls = if (ctx.apiImageUrls.isNotEmpty()) {
-            Logger.log("  API/SSR获取到 ${ctx.apiImageUrls.size} 个图片链接，优先使用")
-            ctx.apiImageUrls
+        val rawImageUrls = if (ctx.apiImageUrls.isNotEmpty() || ctx.ssrImageUrls.isNotEmpty()) {
+            val merged = (ctx.apiImageUrls + ctx.ssrImageUrls).distinct()
+            Logger.log("  API/SSR获取到 ${merged.size} 个图片链接（API ${ctx.apiImageUrls.size} + SSR ${ctx.ssrImageUrls.size}），优先使用")
+            merged
         } else {
             Logger.log("  API/SSR均未获取到图片链接，退到DOM+网络请求")
             ctx.domImageUrls + ctx.networkImageUrls
@@ -298,6 +328,19 @@ class UrlProcessor(
                 )
             )
             Logger.log("  URL记录到跳过表 (所有文件被跳过)")
+        } else {
+            // 未提取到任何媒体 URL（页面结构变化/风控/非作品页）——记录便于排查
+            scrapeDao.insertSkipped(
+                SkippedRecord(
+                    shortUrl = normalizedUrl,
+                    albumName = ctx.author,
+                    albumCode = ctx.authorCode,
+                    remark = ctx.title,
+                    skipReason = "无媒体URL",
+                    createTime = now()
+                )
+            )
+            Logger.log("  ⚠️ 未提取到任何媒体URL (视频/图片均为 0)，已记录到跳过表", "warn")
         }
     }
 

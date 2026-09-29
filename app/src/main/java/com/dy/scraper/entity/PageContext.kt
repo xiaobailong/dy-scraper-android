@@ -37,6 +37,8 @@ class PageContext(
     // ── 媒体 URL（按来源分层） ──
     var apiVideoUrls: List<String> = emptyList()
     var apiImageUrls: List<String> = emptyList()
+    var ssrVideoUrls: List<String> = emptyList()
+    var ssrImageUrls: List<String> = emptyList()
     var domVideoUrls: List<String> = emptyList()
     var domImageUrls: List<String> = emptyList()
     var networkVideoUrls: List<String> = emptyList()

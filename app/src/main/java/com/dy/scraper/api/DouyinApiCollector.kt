@@ -1,265 +1,160 @@
 package com.dy.scraper.api
 
+import com.dy.scraper.core.MediaExtractor
 import com.dy.scraper.core.WebViewManager
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.Logger
-import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonElement
-import com.google.gson.JsonNull
-import com.google.gson.JsonObject
-import com.google.gson.JsonParser
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
 
+/**
+ * 抖音详情 API（aweme/detail、note）响应处理
+ *
+ * 解析逻辑统一在 [MediaExtractor]（纯 Kotlin，可单元测试），本类只负责「拿到响应体」。
+ * 拿到响应体有两条腿：
+ *   1. WebViewManager 的「影子请求」——拦截到 API 时用同一会话重新请求并抓 body（主路径）
+ *   2. JS fetch + JS 桥回调（兜底，evaluateJavascript 不会 await Promise，必须走桥）
+ */
 object DouyinApiCollector {
 
-    private val gson = Gson()
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
         .build()
-
-    fun isDetailApiResponse(url: String): Boolean {
-        return AppConfig.DETAIL_API_PATTERNS.any { it in url }
-    }
-
-    /**
-     * 通过 WebView JS fetch 请求 API 并解析 JSON（共享 Cookie 会话）
-     * 这是主要路径，对应 Python 版 await resp.text() 在浏览器上下文中的行为
-     */
-    suspend fun fetchAndParseApiResponseViaJs(
-        wvm: WebViewManager,
-        apiUrl: String
-    ): ApiData {
-        val body = wvm.fetchApiViaJs(apiUrl)
-        if (body.isNullOrEmpty()) {
-            Logger.log("  [API-JS] 响应体为空: ${apiUrl.take(100)}...", "debug")
-            return ApiData()
-        }
-        Logger.log("  [API-JS] 响应体长度: ${body.length}", "debug")
-        return parseApiBody(body, apiUrl)
-    }
-
-    /**
-     * 通过 OkHttp 同步请求 API（兼容/兜底方案，可能因 Cookie 缺失而失败）
-     */
-    fun fetchAndParseApiResponse(apiUrl: String, cookies: String = ""): ApiData {
-        try {
-            val requestBuilder = Request.Builder()
-                .url(apiUrl)
-                .header("User-Agent", AppConfig.USER_AGENT)
-                .header("Referer", "https://www.douyin.com/")
-                .header("Accept", "application/json")
-
-            if (cookies.isNotEmpty()) {
-                requestBuilder.header("Cookie", cookies)
-            }
-
-            val response = client.newCall(requestBuilder.build()).execute()
-            if (!response.isSuccessful) {
-                Logger.log("  [API] 请求失败 HTTP ${response.code}: ${apiUrl.take(100)}...", "warn")
-                return ApiData()
-            }
-
-            val body = response.body?.string() ?: return ApiData()
-            Logger.log("  [API] 响应体长度: ${body.length}", "debug")
-            return parseApiBody(body, apiUrl)
-        } catch (e: Exception) {
-            Logger.log("  [API] 请求异常: ${e.message}", "warn")
-            return ApiData()
-        }
-    }
-
-    private fun parseApiBody(body: String, @Suppress("UNUSED_PARAMETER") apiUrl: String): ApiData {
-        val videoUrls = mutableListOf<String>()
-        val imageUrls = mutableListOf<String>()
-        var author = ""
-        var authorCode = ""
-        var title = ""
-
-        val json = try {
-            JsonParser.parseString(body).asJsonObject
-        } catch (e: Exception) {
-            Logger.log("  [API] JSON 解析失败: ${e.message}, body前100字符: ${body.take(100)}", "warn")
-            return ApiData()
-        }
-
-        val root = safeGetObject(json, "data") ?: json
-
-        // 1) aweme_detail 直接路径
-        var awemeDetail = safeGetObject(root, "aweme_detail")
-        if (awemeDetail == null) {
-            val awemeObj = safeGetObject(root, "aweme")
-            awemeDetail = safeGetObject(awemeObj, "detail")
-        }
-
-        // 2) aweme_list 数组（取第一条）
-        if (awemeDetail == null) {
-            val awemeList = safeGetArray(root, "aweme_list")
-            if (awemeList != null && awemeList.size() > 0) {
-                val first = awemeList.get(0)
-                if (first is JsonObject) {
-                    awemeDetail = safeGetObject(first, "aweme_info") ?: first
-                }
-            }
-        }
-
-        if (awemeDetail != null) {
-            Logger.log("  [API解析] 找到 aweme_detail", "debug")
-            val video = safeGetObject(awemeDetail, "video")
-            if (video != null) {
-                // download_addr（无水印原画，最高优先级，对应 Python 版）
-                extractUrlList(safeGetObject(video, "download_addr"), null, videoUrls)
-
-                // play_addr（播放地址）
-                extractUrlList(video, "play_addr", videoUrls)
-
-                // play_addr_h264（备用）
-                extractUrlList(video, "play_addr_h264", videoUrls)
-
-                // bit_rate 数组（多码率，取最高清）
-                val bitRate = safeGetArray(video, "bit_rate")
-                if (bitRate != null && bitRate.size() > 0) {
-                    for (br in bitRate) {
-                        if (br is JsonObject) {
-                            extractUrlList(br, "play_addr", videoUrls)
-                        }
-                    }
-                }
-            }
-
-            // 图片 URL（图集）
-            val images = safeGetArray(awemeDetail, "images")
-            if (images != null) {
-                for (img in images) {
-                    if (img is JsonObject) {
-                        val urlList = safeGetArray(img, "url_list")
-                            ?: safeGetArray(img, "download_url_list")
-                        if (urlList != null && urlList.size() > 0) {
-                            for (u in urlList) {
-                                if (u.asString.startsWith("http")) {
-                                    imageUrls.add(u.asString)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 封面
-            val coverObj = safeGetObject(video, "cover")
-            if (coverObj != null) {
-                extractUrlList(coverObj, null, imageUrls)
-            }
-
-            // 作者信息
-            val authorObj = safeGetObject(awemeDetail, "author")
-                ?: safeGetObject(awemeDetail, "author_info")
-            if (authorObj != null) {
-                author = authorObj.get("nickname")?.asString ?: ""
-                authorCode = authorObj.get("unique_id")?.asString
-                    ?: authorObj.get("short_id")?.asString
-                    ?: ""
-            }
-
-            title = awemeDetail.get("desc")?.asString ?: ""
-        }
-
-        // 3) note_detail 路径（笔记/图集）
-        val noteDetail = safeGetObject(root, "note_detail")
-            ?: safeGetObject(root, "note")
-        if (noteDetail != null) {
-            val images = safeGetArray(noteDetail, "images")
-                ?: safeGetObject(noteDetail, "image_list")?.let { safeGetArray(it, "images") }
-            if (images != null) {
-                for (img in images) {
-                    if (img is JsonObject) {
-                        val urlList = safeGetArray(img, "url_list")
-                            ?: safeGetArray(img, "download_url_list")
-                        if (urlList != null && urlList.size() > 0) {
-                            for (u in urlList) {
-                                if (u.asString.startsWith("http")) {
-                                    imageUrls.add(u.asString)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            val authorObj = safeGetObject(noteDetail, "author")
-            if (authorObj != null) {
-                if (author.isEmpty()) {
-                    author = authorObj.get("nickname")?.asString ?: ""
-                }
-                if (authorCode.isEmpty()) {
-                    authorCode = authorObj.get("unique_id")?.asString
-                        ?: authorObj.get("short_id")?.asString
-                        ?: ""
-                }
-            }
-
-            if (title.isEmpty()) {
-                title = noteDetail.get("desc")?.asString ?: ""
-            }
-        }
-
-        // 去重视频 URL
-        val dedupedVideos = videoUrls.distinct()
-
-        Logger.log("  [API解析] 视频: ${dedupedVideos.size}, 图片: ${imageUrls.size}, 作者: $author")
-        return ApiData(
-            videoUrls = dedupedVideos,
-            imageUrls = imageUrls,
-            author = author,
-            authorCode = authorCode,
-            title = title
-        )
-    }
-
-    private fun extractUrlList(parent: JsonObject?, field: String?, urls: MutableList<String>) {
-        if (parent == null) return
-        val obj = if (field != null) safeGetObject(parent, field) ?: return else parent
-        val urlList = safeGetArray(obj, "url_list")
-        if (urlList != null && urlList.size() > 0) {
-            for (url in urlList) {
-                val s = url.asString
-                if (s.isNotBlank() && s.startsWith("http")) {
-                    urls.add(s)
-                }
-            }
-        }
-    }
-
-    private fun safeGetObject(json: JsonObject?, key: String): JsonObject? {
-        if (json == null) return null
-        val elem = json.get(key) ?: return null
-        if (elem is JsonNull) return null
-        return try {
-            elem.asJsonObject
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    private fun safeGetArray(json: JsonObject?, key: String): JsonArray? {
-        if (json == null) return null
-        val elem = json.get(key) ?: return null
-        if (elem is JsonNull) return null
-        return try {
-            elem.asJsonArray
-        } catch (_: Exception) {
-            null
-        }
-    }
 
     data class ApiData(
         val videoUrls: List<String> = emptyList(),
         val imageUrls: List<String> = emptyList(),
         val author: String = "",
         val authorCode: String = "",
-        val title: String = ""
-    )
+        val title: String = "",
+        val coverUrl: String = "",
+        /** 命中的提取方式，如 "bit_rate=1280000" / "download_addr" / "play_addr" */
+        val videoSource: String = ""
+    ) {
+        val hasMedia: Boolean
+            get() = videoUrls.isNotEmpty() || imageUrls.isNotEmpty()
+    }
+
+    fun isDetailApiResponse(url: String): Boolean =
+        AppConfig.DETAIL_API_PATTERNS.any { it in url }
+
+    /**
+     * 通过 WebView JS fetch 请求 API 并解析（共享 Cookie 会话，兜底路径）
+     */
+    suspend fun fetchAndParseApiResponseViaJs(
+        wvm: WebViewManager,
+        apiUrl: String,
+        pageUrl: String = ""
+    ): ApiData {
+        val body = wvm.fetchApiViaJs(apiUrl)
+        if (body.isNullOrEmpty() || body == "{}") {
+            Logger.log("  [API-JS] 响应体为空: ${apiUrl.take(100)}...", "debug")
+            return ApiData()
+        }
+        return parseApiBody(body, pageUrl)
+    }
+
+    /**
+     * 通过 OkHttp 请求 API（兼容/兜底方案，可能因风控返回空 body）
+     */
+    fun fetchAndParseApiResponse(apiUrl: String, cookies: String = "", pageUrl: String = ""): ApiData {
+        try {
+            val builder = Request.Builder()
+                .url(apiUrl)
+                .header("User-Agent", AppConfig.USER_AGENT)
+                .header("Referer", "https://www.douyin.com/")
+                .header("Accept", "application/json, text/plain, */*")
+            if (cookies.isNotEmpty()) builder.header("Cookie", cookies)
+
+            client.newCall(builder.build()).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Logger.log("  [API] 请求失败 HTTP ${response.code}: ${apiUrl.take(100)}...", "warn")
+                    return ApiData()
+                }
+                val body = response.body?.string() ?: return ApiData()
+                Logger.log("  [API] 响应体长度: ${body.length}", "debug")
+                return parseApiBody(body, pageUrl)
+            }
+        } catch (e: Exception) {
+            Logger.log("  [API] 请求异常: ${e.message}", "warn")
+            return ApiData()
+        }
+    }
+
+    /**
+     * 解析单条详情 API 响应体（纯函数，可单元测试）
+     */
+    fun parseApiBody(body: String, pageUrl: String = ""): ApiData {
+        val media = MediaExtractor.parseApiBody(body, pageUrl)
+        if (!media.hasMedia && media.author.isEmpty() && media.authorCode.isEmpty()) {
+            Logger.log("  [API解析] 未解析出媒体, body前100字符: ${body.take(100)}", "warn")
+            return ApiData()
+        }
+        val source = videoSourceOf(media)
+        Logger.log(
+            "  [API解析] 视频: ${media.videoUrls.size} ($source), " +
+                    "图片: ${media.imageUrls.size}, 作者: ${media.author} (${media.authorCode})"
+        )
+        return ApiData(
+            videoUrls = media.videoUrls,
+            imageUrls = media.imageUrls,
+            author = media.author,
+            authorCode = media.authorCode,
+            title = media.title,
+            coverUrl = media.coverUrl,
+            videoSource = source
+        )
+    }
+
+    /**
+     * 合并解析多条详情响应体（影子请求可能同时命中 detail 与 note 两种接口）
+     */
+    fun parseAllBodies(bodies: List<Map<String, String>>, pageUrl: String = ""): ApiData {
+        if (bodies.isEmpty()) return ApiData()
+
+        val videos = LinkedHashSet<String>()
+        val images = LinkedHashSet<String>()
+        var author = ""
+        var authorCode = ""
+        var title = ""
+        var cover = ""
+        var source = ""
+
+        for (b in bodies) {
+            val body = b["body"] ?: continue
+            if (body.isBlank()) continue
+            val one = parseApiBody(body, pageUrl)
+            if (!one.hasMedia && one.author.isEmpty()) continue
+            videos.addAll(one.videoUrls)
+            images.addAll(one.imageUrls)
+            if (author.isEmpty()) author = one.author
+            if (authorCode.isEmpty()) authorCode = one.authorCode
+            if (title.isEmpty()) title = one.title
+            if (cover.isEmpty()) cover = one.coverUrl
+            if (source.isEmpty()) source = one.videoSource
+        }
+
+        return ApiData(
+            videoUrls = videos.toList(),
+            imageUrls = images.toList(),
+            author = author,
+            authorCode = authorCode,
+            title = title,
+            coverUrl = cover,
+            videoSource = source
+        )
+    }
+
+    /** 判定视频地址来源（用于日志排查） */
+    private fun videoSourceOf(media: MediaExtractor.Media): String {
+        if (media.videoUrls.isEmpty()) return "无"
+        val url = media.videoUrls.first()
+        Regex("[?&]br=(\\d+)").find(url)?.groupValues?.get(1)?.let { return "bit_rate=$it" }
+        if (url.contains("watermark=0")) return "download_addr"
+        if (url.contains("play_addr_h264") || url.contains("/h264/")) return "play_addr_h264"
+        return "play_addr"
+    }
 }

@@ -244,6 +244,24 @@ class UtilsTest {
         assertEquals("5eb63bbbe01eeed093cb22bb8f5acdc3", Utils.md5("hello world".toByteArray()))
     }
 
+    @Test
+    fun `md5 file equals md5 bytes and handles large file`() {
+        // 流式实现必须与原先 readBytes() 的结果一致（大视频文件不再整块读进内存）
+        val dir = java.nio.file.Files.createTempDirectory("dy-md5").toFile()
+        try {
+            val small = java.io.File(dir, "small.bin")
+            small.writeBytes("hello world".toByteArray())
+            assertEquals("5eb63bbbe01eeed093cb22bb8f5acdc3", Utils.md5(small))
+
+            val big = java.io.File(dir, "big.bin")
+            val chunk = ByteArray(512 * 1024) { (it % 251).toByte() }
+            big.outputStream().use { out -> repeat(6) { out.write(chunk) } }
+            assertEquals(Utils.md5(big.readBytes()), Utils.md5(big))
+        } finally {
+            dir.deleteRecursively()
+        }
+    }
+
     // ==================== isUiAsset ====================
 
     @Test

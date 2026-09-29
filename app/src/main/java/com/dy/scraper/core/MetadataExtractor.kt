@@ -286,16 +286,101 @@ object MetadataExtractor {
 })();
     """.trimIndent()
 
+    /**
+     * 页面内嵌数据 dump 脚本：把 SSR / 内嵌 JSON 原样取出，交给 Kotlin 侧解析
+     * （抖音 PC 视频页数据在 window._ROUTER_DATA，图集页在 RENDER_DATA 等）
+     */
+    val SSR_DUMP_SCRIPT = """
+(function() {
+    const out = { url: location.href || '', details: [], texts: {} };
+    const visited = new WeakSet();
+    const MAX_DETAILS = 6;
+    const MAX_TEXT = 200000;
+    let budget = 600000;
+
+    function isDetail(o) {
+        if (!o || typeof o !== 'object' || Array.isArray(o)) return false;
+        const hasId = ('aweme_id' in o) || ('note_id' in o) || ('item_id' in o);
+        const hasDesc = ('desc' in o);
+        const hasVideo = o.video && typeof o.video === 'object' &&
+            (o.video.play_addr || o.video.download_addr || (Array.isArray(o.video.bit_rate) && o.video.bit_rate.length > 0));
+        const hasImages = Array.isArray(o.images) && o.images.length > 0;
+        return (hasVideo || hasImages) && (hasId || hasDesc);
+    }
+
+    function walk(o, depth) {
+        if (!o || depth > 12 || typeof o !== 'object' || out.details.length >= MAX_DETAILS) return;
+        if (visited.has(o)) return;
+        visited.add(o);
+        try {
+            if (!Array.isArray(o) && isDetail(o)) out.details.push(o);
+            if (Array.isArray(o)) {
+                const n = Math.min(o.length, 200);
+                for (let i = 0; i < n; i++) walk(o[i], depth + 1);
+            } else {
+                for (const k in o) walk(o[k], depth + 1);
+            }
+        } catch (e) {}
+    }
+
+    // document-start 钩子（PageHook）在赋值瞬间抓的快照：抖音 hydration 后会把 _ROUTER_DATA 删掉，
+    // 事后再 dump 什么都拿不到（真机日志：`[SSR] 扫描 0 个内嵌数据源`），所以这里优先读快照
+    try {
+        const snap = window.__dySsr || {};
+        for (const k in snap) {
+            let raw = snap[k];
+            let v = raw;
+            if (typeof v === 'string') {
+                try { v = JSON.parse(v); } catch (e) { v = null; }
+            }
+            if (v !== null && v !== undefined && typeof v === 'object') walk(v, 0);
+            if (raw && typeof raw === 'string' && raw.length <= MAX_TEXT && budget > 0) {
+                out.texts['snap:' + k] = raw;
+                budget -= raw.length;
+            }
+        }
+    } catch (e) {}
+
+    const keys = ['_ROUTER_DATA', '__INITIAL_STATE__', '__UNIVERSAL_DATA__', '__NEXT_DATA__', '__NUXT__', '__DATA__', '__META_DATA__', 'RENDER_DATA'];
+    for (const k of keys) {
+        let v = null;
+        try { v = window[k]; } catch (e) { continue; }
+        if (v === undefined || v === null) continue;
+        if (typeof v === 'string') {
+            try { v = JSON.parse(v); } catch (e) { continue; }
+        }
+        walk(v, 0);
+        try {
+            const s = JSON.stringify(v);
+            if (s && s.length <= MAX_TEXT && budget > 0) { out.texts[k] = s; budget -= s.length; }
+        } catch (e) {}
+    }
+
+    // 内嵌 script（如 <script id="RENDER_DATA"> 里的 JSON）
+    try {
+        const scripts = document.querySelectorAll('script');
+        for (let i = 0; i < scripts.length; i++) {
+            const t = scripts[i].textContent || '';
+            if (!t || t.length > MAX_TEXT || budget <= 0) continue;
+            const id = (scripts[i].id || '');
+            if (t.indexOf('play_addr') < 0 && t.indexOf('"aweme_id"') < 0
+                && t.indexOf('url_list') < 0 && id.toLowerCase().indexOf('render_data') < 0) continue;
+            out.texts['script:' + (id || i)] = t;
+            budget -= t.length;
+        }
+    } catch (e) {}
+
+    return JSON.stringify(out);
+})();
+    """.trimIndent()
+
     suspend fun extractFromWebView(wvm: WebViewManager, ctx: PageContext): PageContext {
         Logger.log("[元数据提取] 执行 JS 提取脚本...")
 
-        val rawResult = wvm.evaluateJavascript(EXTRACT_SCRIPT)
+        val jsonStr = wvm.evaluateJavascriptText("return $EXTRACT_SCRIPT")
         Logger.log("[元数据提取] JS 执行完成", "debug")
 
-        // 解析 JSON 结果（WebView.evaluateJavascript 返回的是带引号的 JSON 字符串）
-        val jsonStr = rawResult.trim('"').replace("\\\"", "\"").replace("\\\\", "\\")
-
-        return try {
+        try {
             val json = JsonParser.parseString(jsonStr).asJsonObject
 
             ctx.title = json.get("title")?.asString ?: ""
@@ -324,14 +409,95 @@ object MetadataExtractor {
             ctx
         } catch (e: Exception) {
             Logger.log("[元数据提取] JSON 解析失败: ${e.message}", "error")
-            Logger.log("  原始返回: ${rawResult.take(500)}", "debug")
             ctx
         }
+
+        // ── SSR / 页面内嵌 JSON 兜底（API 响应拿不到时的关键路径） ──
+        extractFromSs(wvm, ctx)
+        return ctx
     }
 
     /**
-     * 从 API 响应中提取视频/图片 URL（对应 Python 的 api 模块解析逻辑）
+     * 从页面 SSR 变量（_ROUTER_DATA / RENDER_DATA / __INITIAL_STATE__ 等）与内嵌 script 中提取媒体。
+     * 抖音 PC 视频页数据在 window._ROUTER_DATA，图集页在 RENDER_DATA / _ROUTER_DATA，
+     * 这是拿不到详情 API 响应时唯一的可靠视频来源。
      */
+    suspend fun extractFromSs(wvm: WebViewManager, ctx: PageContext) {
+        val raw = try {
+            wvm.evaluateJavascriptText("return $SSR_DUMP_SCRIPT")
+        } catch (e: Exception) {
+            Logger.log("  [SSR] dump 失败: ${e.message}", "warn")
+            ""
+        }
+        if (raw.isEmpty()) {
+            Logger.log("  [SSR] 未获取到页面内嵌数据", "debug")
+            return
+        }
+
+        val texts = try {
+            val json = JsonParser.parseString(raw).asJsonObject
+            val map = LinkedHashMap<String, String>()
+            json.getAsJsonObject("texts")?.entrySet()?.forEach { (k, v) ->
+                if (v.isJsonPrimitive) map[k] = v.asString
+            }
+            map
+        } catch (e: Exception) {
+            Logger.log("  [SSR] 解析 dump 失败: ${e.message}", "warn")
+            return
+        }
+
+        // 1) JS 已在内嵌数据里定位到的详情对象（体积小，优先）
+        var inline = MediaExtractor.Media()
+        try {
+            val dump = JsonParser.parseString(raw).asJsonObject
+            val details = dump.getAsJsonArray("details")
+            if (details != null && details.size() > 0) {
+                val root = com.google.gson.JsonObject()
+                root.add("candidates", details)
+                val detail = MediaExtractor.findDetail(root, ctx.finalUrl)
+                inline = MediaExtractor.mediaFromDetail(detail)
+                Logger.log(
+                    "  [SSR] 内嵌详情候选 ${details.size()} 个 → 命中 id=${MediaExtractor.detailId(detail)}",
+                    "debug"
+                )
+            }
+        } catch (e: Exception) {
+            Logger.log("  [SSR] 内嵌详情解析失败: ${e.message}", "warn")
+        }
+
+        // 2) SSR 变量文本兜底解析
+        val fromTexts = MediaExtractor.parseSsTexts(texts, ctx.finalUrl)
+
+        val media = MediaExtractor.Media(
+            videoUrls = if (inline.videoUrls.isNotEmpty()) inline.videoUrls else fromTexts.videoUrls,
+            imageUrls = (inline.imageUrls + fromTexts.imageUrls).distinct(),
+            author = inline.author.ifEmpty { fromTexts.author },
+            authorCode = inline.authorCode.ifEmpty { fromTexts.authorCode },
+            title = inline.title.ifEmpty { fromTexts.title },
+            coverUrl = inline.coverUrl.ifEmpty { fromTexts.coverUrl },
+            detailKeys = inline.detailKeys + fromTexts.detailKeys
+        )
+
+        ctx.ssrAvailable = texts.keys.toList()
+        if (media.videoUrls.isNotEmpty()) ctx.ssrVideoUrls = media.videoUrls
+        if (media.imageUrls.isNotEmpty()) ctx.ssrImageUrls = media.imageUrls
+        if (ctx.author.isEmpty() && media.author.isNotEmpty()) ctx.author = media.author
+        if (ctx.authorCode.isEmpty() && media.authorCode.isNotEmpty()) ctx.authorCode = media.authorCode
+        if (ctx.title.isEmpty() && media.title.isNotEmpty()) ctx.title = media.title
+        if (ctx.coverUrl.isEmpty() && media.coverUrl.isNotEmpty()) ctx.coverUrl = media.coverUrl
+
+        Logger.log(
+            "  [SSR] 扫描 ${texts.size} 个内嵌数据源 " +
+                    "(命中: ${media.detailKeys.joinToString(",").ifEmpty { "无" }}) " +
+                    "→ 视频 ${ctx.ssrVideoUrls.size} 个, 图片 ${ctx.ssrImageUrls.size} 个"
+        )
+    }
+
+    /**
+     * 【已废弃】历史上只解析 URL 不解析响应体，现由 [MediaExtractor] + [com.dy.scraper.api.DouyinApiCollector] 取代。
+     * 保留仅为兼容调用方，请勿在新代码中使用。
+     */
+    @Suppress("UNUSED_VARIABLE", "unused")
     fun extractFromApiResponses(detailResponses: List<String>): Pair<List<String>, List<String>> {
         val videoUrls = mutableListOf<String>()
         val imageUrls = mutableListOf<String>()

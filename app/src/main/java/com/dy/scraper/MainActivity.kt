@@ -50,6 +50,16 @@ class MainActivity : AppCompatActivity() {
 
     private var youdaoUrls: List<String> = emptyList()
 
+    /** 日志监听器（保存引用，onDestroy 时移除，避免内存泄漏） */
+    private val logListener: (String) -> Unit = { message ->
+        runOnUiThread {
+            logView.append("$message\n")
+            scrollView.post {
+                scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Logger.init(this)
@@ -435,10 +445,13 @@ class MainActivity : AppCompatActivity() {
                 .observe(this@MainActivity) { workInfo ->
                     if (workInfo != null) {
                         val progress = workInfo.progress
-                        val pct = progress.getInt("progress_pct", 0)
-                        val total = progress.getInt("url_total", 0)
-                        val done = progress.getInt("url_done", 0)
-                        Logger.log("进度: $done/$total ($pct%)")
+                        // 任务结束时 WorkManager 会清空 progress → 不再打印 "0/0 (0%)" 噪声
+                        if (progress.keyValueMap.isNotEmpty()) {
+                            val pct = progress.getInt("progress_pct", 0)
+                            val total = progress.getInt("url_total", 0)
+                            val done = progress.getInt("url_current", 0)
+                            Logger.log("进度: $done/$total ($pct%)")
+                        }
 
                         if (workInfo.state.isFinished) {
                             Logger.log("WorkManager任务完成, state=${workInfo.state}")
@@ -473,14 +486,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupLogger() {
-        Logger.addListener { message ->
-            runOnUiThread {
-                logView.append("$message\n")
-                scrollView.post {
-                    scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN)
-                }
-            }
-        }
+        Logger.addListener(logListener)
     }
 
     private fun getVersionName(): String {
@@ -494,6 +500,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         Logger.d("========== onDestroy ==========")
+        Logger.removeListener(logListener)
         super.onDestroy()
     }
 }

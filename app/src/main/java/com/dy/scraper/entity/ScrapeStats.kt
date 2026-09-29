@@ -25,7 +25,8 @@ data class MediaStats(
                 "skipped_small" -> skippedSmall++
                 "skipped_large" -> skippedLarge++
                 "skipped_duplicate" -> skippedDup++
-                "skipped_video_phash_dup", "skipped_phash_dup" -> skippedPhashDup++
+                // 表情包过滤与 pHash 重复同属「内容过滤」，合并计数保证 总数 = 成功+失败+跳过
+                "skipped_video_phash_dup", "skipped_phash_dup", "skipped_emoji" -> skippedPhashDup++
             }
         }
     }
@@ -67,9 +68,11 @@ class ScrapeStats(
         val totalSuccess = video.success + image.success
         val totalFailed = video.failed + image.failed
         val videoSkipped = video.skippedSmall + video.skippedLarge + video.skippedDup + video.skippedPhashDup
-        val imageSkipped = image.skippedSmall + image.skippedLarge + image.skippedDup
+        // 注意：图片的 pHash 重复也必须计入跳过，否则「文件总数 ≠ 成功+失败+跳过」
+        val imageSkipped = image.skippedSmall + image.skippedLarge + image.skippedDup + image.skippedPhashDup
         val totalSkipped = videoSkipped + imageSkipped
         val totalUrls = urlTotal + skippedUrlCount
+        val accounted = totalSuccess + totalFailed + totalSkipped
 
         Logger.log("")
         Logger.log("=".repeat(60))
@@ -88,6 +91,7 @@ class ScrapeStats(
         Logger.log("  │  下载成功: $totalSuccess 个 (视频 ${video.success}, 图片 ${image.success})")
         Logger.log("  │  下载失败: $totalFailed 个 (视频 ${video.failed}, 图片 ${image.failed})")
         Logger.log("  │  跳过(文件): $totalSkipped 个 (视频 $videoSkipped, 图片 $imageSkipped)")
+        Logger.log("  │  合计核对: ${video.total + image.total} = $accounted (成功+失败+跳过)")
         Logger.log("  └──────────────────────────────────────────")
         Logger.log("=".repeat(60))
     }
