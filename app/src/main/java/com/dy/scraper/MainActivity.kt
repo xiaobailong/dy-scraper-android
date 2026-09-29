@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
@@ -420,6 +421,9 @@ class MainActivity : AppCompatActivity() {
 
         updateStartStopButtons(running = true)
 
+        // 抓取过程中保持屏幕常亮，防止锁屏中断
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         // 显示 WebView（用户可观察抓取效果）
         scraperWebView.visibility = View.VISIBLE
 
@@ -449,6 +453,7 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 scraperWebView.visibility = View.GONE
                 updateStartStopButtons(running = false)
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 webViewManager = null
             }
         }
@@ -460,6 +465,7 @@ class MainActivity : AppCompatActivity() {
         scrapeJob?.cancel()
         scraperWebView.visibility = View.GONE
         updateStartStopButtons(running = false)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         webViewManager = null
         Logger.log("  抓取任务已取消")
     }
