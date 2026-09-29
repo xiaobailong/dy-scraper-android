@@ -65,6 +65,15 @@ dy-scraper-android/
 - 跨运行: `ScraperWorker.filterProcessedUrls()` 按归一化 URL + DB 检查
 
 ### 终端管理（强制）
+- **终端标签名**：依赖 `.vscode/settings.json` 中 `"terminal.integrated.tabs.title": "dy-scraper"` 配置，所有新终端标签统一显示为 `dy-scraper`（而非默认的 `cmd`），便于快速识别项目终端。
+- **终端内容标识（必须）**：标签名统一无法区分不同终端，因此每个新终端打开后首条命令必须是标识头：
+  ```cmd
+  echo === task-N-用途 ===
+  ```
+  - `N` 为递增序号（从 1 开始，本次请求范围内唯一）
+  - `用途` 为简短英文描述（如 build、git、test、clean）
+  - 示例：`echo === task-1-build ===`、`echo === task-2-git ===`
+- **终端标签重命名（手动）**：如需为特定终端设置独立标签名，可通过 `Ctrl+Shift+P` → `Terminal All In One: Rename Current Terminal`（或右键终端标签 → Rename），输入自定义名称。此操作需要手动交互，无法通过命令自动化。
 - **终端复用**：执行命令时必须复用已有的终端，不要为每个命令都打开新终端；仅在没有可用终端时才新建一个
 - **终端自动清理（强制）**：每完成一个用户请求后，必须立即清理本次请求中打开的所有终端。方法：
   - 获取当前终端父进程 PID：`powershell -NoProfile -Command "(Get-WmiObject Win32_Process -Filter ProcessId=$pid).ParentProcessId"`

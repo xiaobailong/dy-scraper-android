@@ -13,6 +13,11 @@
   2. 清理时机规则不明确，"对话结束前"容易被理解为整个会话结束而非每个用户请求完成后。
 - **解决方案/规避**：
   - 无法在工具层面强制复用，只能尽量减少不必要的命令调用。
+  - **终端命名（必须启用）**：依赖 `yasht.terminal-all-in-one` 扩展。每个新终端打开后首条命令必须是标识头：
+    ```cmd
+    echo === task-N-用途 ===
+    ```
+    N 为递增序号，用途为简短英文描述（如 build、clean、git）。
   - **终端清理强制时机**：每完成一个用户请求（用户的最后一条消息处理完毕后），必须立即清理本次打开的所有终端，不要等待用户提醒。
   - **关闭终端的有效方法**：
     - 方法一（推荐，按 PID 精确关闭）：
@@ -35,10 +40,12 @@
 
 ### 3. VSCode 集成终端标签无法用 `title` 命令修改
 - **现象**：在 cmd 中执行 `title xxx` 命令，VSCode 终端标签仍然显示 "cmd"，没有变成设置的名字。
-- **原因**：VSCode 集成终端的标签显示的是进程名（cmd），不是控制台窗口标题。`title` 命令改的是窗口标题，在 VSCode 中不生效。
+- **原因**：VSCode 集成终端的标签由 VS Code API 控制（`Terminal.name`），`title` 命令改的是 Windows 控制台窗口标题，在 VSCode 中不生效。
 - **解决方案/规避**：
-  - 无法通过命令修改 VSCode 终端标签名，需要修改 VSCode 全局设置 `terminal.integrated.tabs.title`。
-  - 替代方案：每次开新终端时执行 `echo === 会话-序号 ===`，通过终端内容来区分不同终端。
+  - **标签名（可程序化）**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "dy-scraper"`，所有新终端统一显示为 `dy-scraper`（而非 `cmd`）。
+  - **内容标识（可程序化）**：每个新终端第一行输出 `echo === task-N-用途 ===`，如 `echo === task-1-build ===`。
+  - **重命名（需手动）**：通过 `Ctrl+Shift+P` → `Terminal All In One: Rename Current Terminal`（已安装 `yasht.terminal-all-in-one` 扩展）或右键终端标签 → Rename，为特定终端设置自定义标签名。
+  - 注意：`title` 命令、ANSI OSC 转义序列（`\e]0;...`）、PowerShell `$Host.UI.RawUI.WindowTitle` 均无法修改 VSCode 终端标签。
 
 ### 4. Gradle 构建输出无法被终端捕获（卡住无输出）
 - **现象**：通过 `powershell -NoProfile -Command "& gradle.bat ..."` 执行 Gradle 命令，终端无任何输出且 exit code=0，但实际进程已静默退出。
