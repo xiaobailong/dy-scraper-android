@@ -6,13 +6,16 @@
 
 | 模块 | 说明 |
 |---|---|
-| 页面抓取 | WebView 加载抖音页面，`shouldInterceptRequest()` 拦截网络请求，`evaluateJavascript()` 提取元数据 |
+| 页面抓取 | WebView 加载抖音页面，`PageHook` 在 `document-start` 注入 JS 钩子（拦截 `XMLHttpRequest` / `fetch`），旁听页面原生请求获取详情 JSON（避免风控签名问题） |
+| 媒体提取 | `MediaExtractor` 纯 Kotlin 解析抖音详情 JSON / SSR 数据，提取视频最优地址 & 图片原始分辨率，与 Python 版提取优先级完全对齐 |
+| 抓取引擎 | `ScraperEngine` 共用抓取管道，Activity（UI WebView）和 Worker（后台 WebView）复用同一流程 |
 | 内容下载 | OkHttp 多线程下载视频 / 图片，自动去重（MD5 + pHash） |
 | 本地模式 | 手动粘贴抖音链接（每行一个），暂存草稿，开始 / 停止抓取 |
 | 有道模式 | 从有道云笔记 API 获取 URL 列表，用户确认后开始抓取 |
 | 全局日志 | 写入 `Download/dy-scraper/` 目录，按天滚动，7 天自动清理；Logcat 同步输出 |
 | 日志开关 | 右上角菜单一键关闭全部日志输出，SharedPreferences 持久化，重启生效 |
 | 运行模式 | 本地 / 有道两模式可切换，SharedPreferences 持久化，默认本地模式 |
+| 底部状态栏 | 实时显示抓取进度（百分比 / 当前/总数）和完成状态 |
 | 文件管理 | 直接下载到最终目录（无临时目录），目录：`videos/`、`images/`、`results/` |
 | 进度通知 | 前台 Service + 通知栏显示抓取进度，防系统回收 |
 
@@ -37,17 +40,23 @@ dy-scraper-android/
 │   └── src/main/
 │       ├── AndroidManifest.xml
 │       ├── java/com/dy/scraper/
-│       │   ├── MainActivity.kt           # 主界面：Toolbar + 模式切换 + 日志区
+│       │   ├── MainActivity.kt           # 主界面：Toolbar + 模式切换 + 日志区 + 底部状态栏
 │       │   ├── ScraperApp.kt             # Application：通知渠道
 │       │   ├── api/
-│       │   │   └── DouyinApiCollector.kt  # 抖音 API 响应收集
+│       │   │   └── DouyinApiCollector.kt  # 抖音 API 响应收集（OkHttp 直连）
 │       │   ├── core/
+│       │   │   ├── ScraperEngine.kt       # 共用抓取管道（Activity/Worker 复用）
+│       │   │   ├── PageHook.kt            # document-start JS 钩子（拦截 XHR/fetch，旁听页面原生请求）
+│       │   │   ├── MediaExtractor.kt      # 纯 Kotlin 媒体地址提取（详情 JSON / SSR）
 │       │   │   ├── WebViewManager.kt      # WebView 生命周期 & JS 注入
 │       │   │   ├── UrlProcessor.kt        # 单 URL 处理流程
 │       │   │   ├── Downloader.kt          # 多线程文件下载
 │       │   │   ├── MetadataExtractor.kt   # 标题 / 作者元数据提取
 │       │   │   └── FileStorageManager.kt  # 目录创建 & 文件操作
-│       │   ├── data/                      # Room 数据库：Dao / Entity
+│       │   ├── data/                      # Room 数据库
+│       │   │   ├── AppDatabase.kt         # 数据库实例
+│       │   │   ├── ConfigDao.kt / ScrapeDao.kt
+│       │   │   └── entity/                # ScrapeRecord / SkippedRecord / UrlMapping / AppConfigEntity
 │       │   ├── entity/                    # PageContext / ScrapeStats
 │       │   ├── util/
 │       │   │   ├── Logger.kt              # 全局日志（文件 + Logcat + 开关）
@@ -55,6 +64,7 @@ dy-scraper-android/
 │       │   │   ├── YoudaoFetcher.kt       # 有道云笔记 API URL 提取
 │       │   │   ├── AppConfig.kt           # 路径 / 大小 / 超时配置
 │       │   │   ├── Utils.kt               # 格式化 / URL 标准化
+│       │   │   ├── PHash.kt               # 感知哈希算法实现
 │       │   │   ├── VideoDedupChecker.kt   # pHash 视频去重
 │       │   │   └── ImageDedupChecker.kt   # MD5 图片去重
 │       │   └── worker/
@@ -62,9 +72,12 @@ dy-scraper-android/
 │       │       └── ScraperForegroundService.kt
 │       └── res/                           # 布局 / 菜单 / 字符串 / 主题
 ├── tools/
-│   └── tee-log.ps1               # 构建日志 tee 脚本
-├── memory-bank/                  # 知识库：技术决策 / 踩坑记录
-├── build.bat                     # 构建脚本（版本号递增 + Git 打 tag + 发布）
+│   ├── tee-log.ps1               # 构建日志 tee 脚本（实时双写文件 + 控制台）
+│   ├── bump-version.ps1          # 版本号递增脚本
+│   ├── sync-gradle-version.ps1   # version.properties → build.gradle.kts 版本同步
+│   └── hook-smoke-test.js        # PageHook JS 钩子冒烟测试
+├── memory-bank/                  # 知识库：技术决策 / 踩坑记录 / 问题解决
+├── build.bat                     # 构建脚本（日志双写 + 版本号递增 + APK 编译）
 ├── clean.bat                     # 清理构建产物
 ├── gh-release.bat                # GitHub Release 发布
 ├── version.properties            # versionCode / versionName 唯一源
@@ -108,8 +121,8 @@ build.bat
 ### version.properties
 
 ```properties
-versionCode=1
-versionName=1.0.0
+versionCode=27
+versionName=1.0.27
 ```
 
 `build.bat` 每次构建自动 `versionCode++` 并写回。versionName 需手动修改。
@@ -128,11 +141,13 @@ versionName=1.0.0
 
 | Python | Android |
 |---|---|
-| `main/scraper.py` 主循环 | `ScraperWorker.kt` doWork() |
+| `main/scraper.py` 主循环 | `ScraperEngine.kt` + `ScraperWorker.kt` |
 | `core/browser_manager.py` | `WebViewManager.kt` |
+| `core/page_hook.py` (add_init_script) | `PageHook.kt` (document-start JS 注入) |
+| `core/metadata.py` (媒体提取) | `MediaExtractor.kt` (详情 JSON / SSR) |
 | `core/url_processor.py` | `UrlProcessor.kt` |
 | `core/file_storage.py` | `FileStorageManager.kt` |
-| `core/metadata.py` | `MetadataExtractor.kt` |
+| `core/metadata.py` (标题/作者) | `MetadataExtractor.kt` |
 | `api/youdao.py` | `YoudaoFetcher.kt` |
 | `common/logger.py` | `Logger.kt` |
 | `entity/scrape_stats.py` | `ScrapeStats.kt` |
