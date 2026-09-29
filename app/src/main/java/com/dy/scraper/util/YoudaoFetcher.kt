@@ -6,13 +6,25 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 object YoudaoFetcher {
 
-    const val DEFAULT_YOUDAO_API =
-        "https://note.youdao.com/yws/api/note/70f23df9766d959e890f02747415d2f4?sev=j1&editorType=1&unloginId=c6e838d2-5c51-045a-6067-49fa4b84b37f&editorVersion=new-json-editor&sec=v1"
+    private const val ENCRYPTED_DEFAULT_API = "LA0nEwFbX0ocXURXGlgvViAYPE0RDh1KC0VDHVVRKQwqFicGXVZAA0ABVFQNFnYVIEBmWhdZSVUUAgIFABZ0EnEdYQV" +
+            "GXgMABA9aAxJEJEowFiE3CxEVWEMURVxYTidKKjA3XhFXFV1BClQAGRQjFnVUY1dHAF1TQgQHHwAYJkJwG2tXEFJHA1RXVFtATjJ1IQsgCh0PTQ" +
+            "sXRR1YR04uDiEdOhcdE1YWF1ENRAU="
+    private const val XOR_KEY = "DyScraper2024!@#"
     private const val PREFS_KEY_YOUDAO_URL = "youdao_api_url"
+
+    internal fun getDefaultApiUrl(): String {
+        val encrypted = Base64.getDecoder().decode(ENCRYPTED_DEFAULT_API)
+        val keyBytes = XOR_KEY.toByteArray(Charsets.UTF_8)
+        for (i in encrypted.indices) {
+            encrypted[i] = (encrypted[i].toInt() xor keyBytes[i % keyBytes.size].toInt()).toByte()
+        }
+        return String(encrypted, Charsets.UTF_8)
+    }
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
@@ -28,11 +40,11 @@ object YoudaoFetcher {
     fun getApiUrl(context: Context): String {
         val savedUrl = context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
             .getString(PREFS_KEY_YOUDAO_URL, "") ?: ""
-        if (savedUrl.isBlank()) return DEFAULT_YOUDAO_API
+        if (savedUrl.isBlank()) return getDefaultApiUrl()
 
         if (!isValidNoteApiUrl(savedUrl)) {
             Logger.d("YoudaoFetcher: saved URL is not a valid note API, falling back to default")
-            return DEFAULT_YOUDAO_API
+            return getDefaultApiUrl()
         }
 
         return savedUrl
@@ -65,7 +77,7 @@ object YoudaoFetcher {
     fun getDisplayApiUrl(context: Context): String {
         val savedUrl = context.getSharedPreferences(Logger.PREFS_NAME, Context.MODE_PRIVATE)
             .getString(PREFS_KEY_YOUDAO_URL, "") ?: ""
-        return if (savedUrl.isBlank() || !isValidNoteApiUrl(savedUrl)) DEFAULT_YOUDAO_API
+        return if (savedUrl.isBlank() || !isValidNoteApiUrl(savedUrl)) getDefaultApiUrl()
         else savedUrl
     }
 

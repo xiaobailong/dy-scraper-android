@@ -9,7 +9,7 @@ import org.junit.Test
 
 class YoudaoFetcherTest {
 
-    private val validUrl = "https://note.youdao.com/yws/api/note/70f23df9766d959e890f02747415d2f4?sev=j1&editorType=1&unloginId=c6e838d2-5c51-045a-6067-49fa4b84b37f&editorVersion=new-json-editor&sec=v1"
+    private val validUrl = "https://note.youdao.com/yws/api/note/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?sev=j1&editorType=1"
     private val invalidBaseUrl = "https://note.youdao.com/yws/api/personal/file/"
 
     // ===== getApiUrl =====
@@ -17,19 +17,19 @@ class YoudaoFetcherTest {
     @Test
     fun `getApiUrl returns default when no saved URL`() {
         val ctx = mockContextWithSavedUrl("")
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getApiUrl(ctx))
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getApiUrl(ctx))
     }
 
     @Test
     fun `getApiUrl returns default when saved URL is invalid base path`() {
         val ctx = mockContextWithSavedUrl(invalidBaseUrl)
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getApiUrl(ctx))
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getApiUrl(ctx))
     }
 
     @Test
     fun `getApiUrl returns default when saved URL has no note ID`() {
         val ctx = mockContextWithSavedUrl("https://note.youdao.com/yws/api/note/")
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getApiUrl(ctx))
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getApiUrl(ctx))
     }
 
     @Test
@@ -41,13 +41,13 @@ class YoudaoFetcherTest {
     @Test
     fun `getApiUrl returns default for generic youdao URL`() {
         val ctx = mockContextWithSavedUrl("https://note.youdao.com/")
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getApiUrl(ctx))
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getApiUrl(ctx))
     }
 
     @Test
     fun `getApiUrl rejects wrong api path`() {
-        val ctx = mockContextWithSavedUrl("https://note.youdao.com/yws/api/personal/file/70f23df9766d959e890f02747415d2f4")
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getApiUrl(ctx))
+        val ctx = mockContextWithSavedUrl("https://note.youdao.com/yws/api/personal/file/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getApiUrl(ctx))
     }
 
     // ===== saveApiUrl =====
@@ -92,13 +92,13 @@ class YoudaoFetcherTest {
     @Test
     fun `getDisplayApiUrl shows default when nothing saved`() {
         val ctx = mockContextWithSavedUrl("")
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getDisplayApiUrl(ctx))
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getDisplayApiUrl(ctx))
     }
 
     @Test
     fun `getDisplayApiUrl shows default when invalid saved`() {
         val ctx = mockContextWithSavedUrl(invalidBaseUrl)
-        assertEquals(YoudaoFetcher.DEFAULT_YOUDAO_API, YoudaoFetcher.getDisplayApiUrl(ctx))
+        assertEquals(YoudaoFetcher.getDefaultApiUrl(), YoudaoFetcher.getDisplayApiUrl(ctx))
     }
 
     @Test
@@ -124,12 +124,12 @@ class YoudaoFetcherTest {
         assertFalse(YoudaoFetcher.isNoteApiUrlValid(""))
     }
 
-    // ===== DEFAULT_YOUDAO_API =====
+    // ===== getDefaultApiUrl() =====
 
     @Test
     fun `default API URL is valid`() {
-        assertTrue(YoudaoFetcher.DEFAULT_YOUDAO_API.contains("/yws/api/note/"))
-        assertTrue(Regex("note/([a-f0-9]{32})").containsMatchIn(YoudaoFetcher.DEFAULT_YOUDAO_API))
+        assertTrue(YoudaoFetcher.getDefaultApiUrl().contains("/yws/api/note/"))
+        assertTrue(Regex("note/([a-f0-9]{32})").containsMatchIn(YoudaoFetcher.getDefaultApiUrl()))
     }
 
     // ===== helpers =====
