@@ -184,6 +184,6 @@ object YoudaoFetcher {
             "YoudaoFetcher: skipped $skippedYd youdao domains, " +
             "$skippedNoCom non-.com domains"
         )
-        return result
+        return result.distinct()
     }
 }

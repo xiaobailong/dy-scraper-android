@@ -150,6 +150,9 @@ object Utils {
             val end = if (i + 1 < positions.size) positions[i + 1] else text.length
             var url = text.substring(start, end)
             url = url.replace(Regex("[\u4e00-\u9fff].*$"), "")
+            // Stop at the first whitespace to avoid picking up share text after the URL
+            val firstSpace = url.indexOfFirst { it == ' ' || it == '\t' || it == '\n' || it == '\r' }
+            if (firstSpace > 0) url = url.substring(0, firstSpace)
             url = url.replace(Regex("[\\]。，；！？：》）】」』,.();:!?'\"`*_~\\s]+$"), "")
             if (url.isNotEmpty() && url.startsWith("http")) {
                 result.add(url)

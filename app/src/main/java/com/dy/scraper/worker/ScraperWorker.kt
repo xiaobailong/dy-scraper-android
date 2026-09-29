@@ -167,13 +167,13 @@ class ScraperWorker(
     private fun readUrlList(): List<String> {
         val urlsStr = inputData.getString(KEY_URLS) ?: ""
         if (urlsStr.isNotBlank()) {
-            return urlsStr.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+            return urlsStr.lines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.distinct()
         }
 
         return try {
             val urlsFile = File(applicationContext.filesDir, "urls.txt")
             if (urlsFile.exists()) {
-                urlsFile.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }
+                urlsFile.readLines().map { it.trim() }.filter { it.isNotEmpty() && !it.startsWith("#") }.distinct()
             } else {
                 // 首次运行时创建示例文件
                 urlsFile.parentFile?.mkdirs()

@@ -274,7 +274,8 @@ class MainActivity : AppCompatActivity() {
                 llYoudaoMode.visibility = View.VISIBLE
                 tvYoudaoLabel.visibility = View.GONE
                 tvYoudaoUrlList.visibility = View.GONE
-                llYoudaoButtons.visibility = View.GONE
+                llYoudaoButtons.visibility = View.VISIBLE
+                updateStartStopButtons(running = false)
             }
         }
     }
@@ -367,7 +368,7 @@ class MainActivity : AppCompatActivity() {
         tvYoudaoLabel.visibility = View.VISIBLE
         tvYoudaoLabel.text = getString(R.string.label_youdao_fetching)
         tvYoudaoUrlList.visibility = View.GONE
-        llYoudaoButtons.visibility = View.GONE
+        btnYoudaoStart.isEnabled = false
 
         lifecycleScope.launch {
             val result = YoudaoFetcher.fetchUrls(this@MainActivity)
@@ -375,14 +376,14 @@ class MainActivity : AppCompatActivity() {
                 Logger.log("  有道获取失败: ${result.error}", "error")
                 tvYoudaoLabel.text = getString(R.string.label_youdao_error, result.error)
                 tvYoudaoUrlList.visibility = View.GONE
-                llYoudaoButtons.visibility = View.GONE
+                btnYoudaoStart.isEnabled = false
                 return@launch
             }
             if (result.urls.isEmpty()) {
                 Logger.log("  有道返回空URL列表")
                 tvYoudaoLabel.text = getString(R.string.label_youdao_empty)
                 tvYoudaoUrlList.visibility = View.GONE
-                llYoudaoButtons.visibility = View.GONE
+                btnYoudaoStart.isEnabled = false
                 return@launch
             }
 
@@ -391,7 +392,7 @@ class MainActivity : AppCompatActivity() {
             tvYoudaoLabel.text = getString(R.string.label_url_list, result.urls.size)
             tvYoudaoUrlList.text = result.urls.joinToString("\n")
             tvYoudaoUrlList.visibility = View.VISIBLE
-            llYoudaoButtons.visibility = View.VISIBLE
+            btnYoudaoStart.isEnabled = true
         }
     }
 
@@ -465,7 +466,7 @@ class MainActivity : AppCompatActivity() {
                 btnLocalStop.isEnabled = running
             }
             RunMode.YOUDAO -> {
-                btnYoudaoStart.isEnabled = !running
+                btnYoudaoStart.isEnabled = !running && youdaoUrls.isNotEmpty()
                 btnYoudaoStop.isEnabled = running
             }
         }

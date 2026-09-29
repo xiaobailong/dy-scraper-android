@@ -89,6 +89,8 @@ class UtilsTest {
         val result = Utils.extractUrls("https://v.douyin.com/pg49NbO3_RY/ :4pm Y@m.dN cNJ:/ 05/26")
         assertEquals(1, result.size)
         assertTrue(result[0].contains("pg49NbO3_RY"))
+        // 分享文案应被剥离，URL 应以 / 结尾
+        assertEquals("https://v.douyin.com/pg49NbO3_RY/", result[0])
     }
 
     @Test
@@ -97,6 +99,7 @@ class UtilsTest {
         val result = Utils.extractUrls("https://v.douyin.com/OpEOqm8nVpM/ 04/16 I@V.LJ sEH:/ :2pm")
         assertEquals(1, result.size)
         assertTrue(result[0].contains("OpEOqm8nVpM"))
+        assertEquals("https://v.douyin.com/OpEOqm8nVpM/", result[0])
     }
 
     @Test
@@ -105,8 +108,18 @@ class UtilsTest {
         val input = "https://v.douyin.com/pg49NbO3_RY/ :4pm Y@m.dN cNJ:/ 05/26 https://v.douyin.com/OpEOqm8nVpM/ 04/16 I@V.LJ sEH:/ :2pm"
         val result = Utils.extractUrls(input)
         assertEquals(2, result.size)
-        assertTrue(result.any { "pg49NbO3_RY" in it })
-        assertTrue(result.any { "OpEOqm8nVpM" in it })
+        // 两个URL都应该被正确清理
+        assertEquals("https://v.douyin.com/pg49NbO3_RY/", result[0])
+        assertEquals("https://v.douyin.com/OpEOqm8nVpM/", result[1])
+    }
+
+    @Test
+    fun `extractUrls youdao note style with share text and newline`() {
+        // 模拟有道笔记中带分享文案+换行数字的格式
+        val input = "https://v.douyin.com/NaEd_kBeTGU/ K@J.ic 12/22 :9pm UYM:/ \n3.33"
+        val result = Utils.extractUrls(input)
+        assertEquals(1, result.size)
+        assertEquals("https://v.douyin.com/NaEd_kBeTGU/", result[0])
     }
 
     @Test
