@@ -191,7 +191,7 @@ class WebViewManager(private val context: Context) {
                     "contentType" to contentType,
                 ))
 
-                if (AppConfig.VERBOSE_NETWORK_LOG && !url.contains("douyinstatic.com")) {
+                if (AppConfig.isNetworkLogEnabled(context) && !url.contains("douyinstatic.com")) {
                     val headers = request.requestHeaders.entries
                         .filter { (k, _) -> k.lowercase() in NETWORK_LOG_HEADER_WHITELIST }
                         .joinToString(", ") { (k, v) -> "$k: ${v.take(120)}" }
@@ -214,7 +214,7 @@ class WebViewManager(private val context: Context) {
             @Suppress("OVERRIDE_DEPRECATION")
             override fun onLoadResource(view: WebView, url: String) {
                 super.onLoadResource(view, url)
-                if (AppConfig.VERBOSE_NETWORK_LOG && !url.contains("douyinstatic.com")) {
+                if (AppConfig.isNetworkLogEnabled(context) && !url.contains("douyinstatic.com")) {
                     Logger.log("  [NET:LOADED] ${url.take(200)}", "network")
                 }
             }
@@ -573,7 +573,7 @@ class WebViewManager(private val context: Context) {
          */
         @JavascriptInterface
         fun onNetworkLog(jsonStr: String) {
-            if (!AppConfig.VERBOSE_NETWORK_LOG) return
+            if (!AppConfig.isNetworkLogEnabled(context)) return
             try {
                 val entry = gson.fromJson(jsonStr, Map::class.java) ?: return
                 val url = (entry["url"] as? String) ?: return

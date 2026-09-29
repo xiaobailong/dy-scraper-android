@@ -1,7 +1,10 @@
 package com.dy.scraper
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
@@ -12,6 +15,7 @@ import android.widget.EditText
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
@@ -61,6 +65,38 @@ class MainActivity : AppCompatActivity() {
                 scrollView.fullScroll(android.widget.ScrollView.FOCUS_DOWN)
             }
         }
+    }
+
+    /** 文件夹选择器回写目标 EditText（临时引用，dialog 关闭后置空） */
+    private var pendingFolderEditText: EditText? = null
+
+    private val folderPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        uri?.let { treeUri ->
+            val path = uriToFilePath(treeUri)
+            if (path != null) {
+                pendingFolderEditText?.setText(path)
+            } else {
+                Toast.makeText(this, "无法解析所选路径，请手动输入", Toast.LENGTH_SHORT).show()
+            }
+            contentResolver.takePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+    }
+
+    private fun uriToFilePath(uri: Uri): String? {
+        try {
+            val docId = DocumentsContract.getTreeDocumentId(uri)
+            val split = docId.split(":")
+            if (split.size >= 2 && split[0].equals("primary", ignoreCase = true)) {
+                return "/storage/emulated/0/${split[1]}".trimEnd('/')
+            }
+        } catch (_: Exception) {
+        }
+        return null
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -219,9 +255,11 @@ class MainActivity : AppCompatActivity() {
         val etMaxVideoWorkers = dialogView.findViewById<EditText>(R.id.etMaxVideoWorkers)
         val etMaxImageWorkers = dialogView.findViewById<EditText>(R.id.etMaxImageWorkers)
         val etDownloadRootPath = dialogView.findViewById<EditText>(R.id.etDownloadRootPath)
+        val btnSelectFolder = dialogView.findViewById<Button>(R.id.btnSelectFolder)
         val etImageSizeFilter = dialogView.findViewById<EditText>(R.id.etImageSizeFilter)
         val etVideoSizeFilter = dialogView.findViewById<EditText>(R.id.etVideoSizeFilter)
         val switchUrlDedup = dialogView.findViewById<SwitchCompat>(R.id.switchUrlDedup)
+        val switchNetworkLog = dialogView.findViewById<SwitchCompat>(R.id.switchNetworkLog)
 
         etPageLoadTimeout.setText(AppConfig.getPageLoadTimeoutMs(this).toString())
         etRenderWait.setText(AppConfig.getRenderWaitMs(this).toString())
@@ -233,6 +271,12 @@ class MainActivity : AppCompatActivity() {
         etImageSizeFilter.setText(AppConfig.getImageSizeFilterKb(this).toString())
         etVideoSizeFilter.setText(AppConfig.getVideoSizeFilterMb(this).toString())
         switchUrlDedup.isChecked = AppConfig.isUrlDedupEnabled(this)
+        switchNetworkLog.isChecked = AppConfig.isNetworkLogEnabled(this)
+
+        btnSelectFolder.setOnClickListener {
+            pendingFolderEditText = etDownloadRootPath
+            folderPickerLauncher.launch(null)
+        }
 
         AlertDialog.Builder(this)
             .setTitle(R.string.scraper_settings_title)
@@ -268,7 +312,8 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 AppConfig.setUrlDedupEnabled(this, switchUrlDedup.isChecked)
-                Logger.d("Scraper settings dialog: urlDedup=${switchUrlDedup.isChecked}")
+                AppConfig.setNetworkLogEnabled(this, switchNetworkLog.isChecked)
+                Logger.d("Scraper settings dialog: urlDedup=${switchUrlDedup.isChecked} netLog=${switchNetworkLog.isChecked}")
 
                 Toast.makeText(this, R.string.scraper_settings_saved, Toast.LENGTH_SHORT).show()
                 Logger.d("Scraper settings dialog: saved pageLoad=$pageLoadTimeout render=$renderWait detail=$detailApiWait dlTimeout=$downloadTimeout videoW=$maxVideoWorkers imageW=$maxImageWorkers imgSizeFilter=$imageSizeFilter videoSizeFilter=$videoSizeFilter rootPath=$rootPath")

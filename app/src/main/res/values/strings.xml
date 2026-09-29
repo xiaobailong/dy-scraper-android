@@ -74,8 +74,12 @@
     <string name="scraper_settings_download_root_path">下载根路径</string>
     <string name="scraper_settings_section_filter">下载过滤</string>
     <string name="scraper_settings_image_size_filter">图片最小 (KB)</string>
-    <string name="scraper_settings_video_size_filter">视频最小 (MB)</string>
+    <string name="scraper_settings_video_size_filter">视频最大 (MB)</string>
     <string name="scraper_settings_section_dedup">URL去重</string>
+    <string name="scraper_settings_section_network">网络日志</string>
+    <string name="scraper_settings_network_log_label">输出网络请求详情</string>
+    <string name="scraper_settings_network_log_hint">输出所有 WebView 网络请求/响应到日志文件。受全局日志开关控制：全局关闭时不输出</string>
+    <string name="scraper_settings_select_folder">选择</string>
     <string name="scraper_settings_param_invalid">参数值无效，请输入有效数字</string>
     <string name="scraper_settings_saved">爬虫参数已保存</string>
 </resources>

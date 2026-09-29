@@ -19,6 +19,7 @@ object AppConfig {
     const val KEY_DOWNLOAD_ROOT_PATH = "download_root_path"
     const val KEY_IMAGE_SIZE_FILTER_KB = "image_size_filter_kb"
     const val KEY_VIDEO_SIZE_FILTER_MB = "video_size_filter_mb"
+    const val KEY_NETWORK_LOG_ENABLED = "network_log_enabled"
 
     // ── 爬虫参数默认值 ──
     const val DEFAULT_PAGE_LOAD_TIMEOUT_MS = 30_000L
@@ -29,9 +30,9 @@ object AppConfig {
     const val DEFAULT_MAX_IMAGE_WORKERS = 8
     const val DEFAULT_IMAGE_SIZE_FILTER_KB = 50L
     const val DEFAULT_VIDEO_SIZE_FILTER_MB = 20L
+    const val DEFAULT_NETWORK_LOG_ENABLED = true
 
     // ── 网络日志（调试用：记录 WebView 所有请求/响应到日志文件） ──
-    const val VERBOSE_NETWORK_LOG = true
     const val NETWORK_LOG_MAX_BODY_LENGTH = 2000
 
     // ── 存储路径 ──
@@ -232,5 +233,15 @@ object AppConfig {
     fun setMaxImageWorkers(context: Context, value: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putInt(KEY_MAX_IMAGE_WORKERS, value).apply()
+    }
+
+    fun isNetworkLogEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_NETWORK_LOG_ENABLED, DEFAULT_NETWORK_LOG_ENABLED)
+    }
+
+    fun setNetworkLogEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_NETWORK_LOG_ENABLED, enabled).apply()
     }
 }

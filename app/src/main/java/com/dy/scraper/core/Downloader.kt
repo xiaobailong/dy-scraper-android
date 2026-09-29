@@ -219,16 +219,24 @@ object Downloader {
 
         // 下载前 HEAD 请求检查 Content-Length（对齐 Python get_file_size 预检）
         val fileSize = getFileSize(url)
-        val minSizeFilter = if (fileType == "video")
-            AppConfig.getVideoSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
-        else
-            AppConfig.getImageSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
-        if (fileSize != null && fileSize < minSizeFilter) {
-            Logger.log("  [${index + 1}/$total] 跳过 (小于${Utils.formatBytes(minSizeFilter)}): ${url.take(80)}...")
-            return DownloadResult(
-                name = "", url = url, path = "", size = Utils.formatBytes(fileSize),
-                md5 = "", status = "skipped_small"
-            )
+        if (fileType == "video") {
+            val videoMaxSizeFilter = AppConfig.getVideoSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
+            if (fileSize != null && fileSize > videoMaxSizeFilter) {
+                Logger.log("  [${index + 1}/$total] 跳过 (大于${Utils.formatBytes(videoMaxSizeFilter)}): ${url.take(80)}...")
+                return DownloadResult(
+                    name = "", url = url, path = "", size = Utils.formatBytes(fileSize),
+                    md5 = "", status = "skipped_large"
+                )
+            }
+        } else {
+            val imageMinSizeFilter = AppConfig.getImageSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
+            if (fileSize != null && fileSize < imageMinSizeFilter) {
+                Logger.log("  [${index + 1}/$total] 跳过 (小于${Utils.formatBytes(imageMinSizeFilter)}): ${url.take(80)}...")
+                return DownloadResult(
+                    name = "", url = url, path = "", size = Utils.formatBytes(fileSize),
+                    md5 = "", status = "skipped_small"
+                )
+            }
         }
 
         Logger.log("  [${index + 1}/$total] 下载中: ${url.take(80)}...")
@@ -243,13 +251,26 @@ object Downloader {
         }
 
         val actualSize = savePath.length()
-        if (actualSize < minSizeFilter) {
-            Utils.safeDelete(savePath)
-            Logger.log("  [${index + 1}/$total] 删除 (小于${Utils.formatBytes(minSizeFilter)}): $fileName")
-            return DownloadResult(
-                name = fileName, url = url, path = "", size = Utils.formatBytes(actualSize),
-                md5 = md5, status = "skipped_small"
-            )
+        if (fileType == "video") {
+            val videoMaxSizeFilter = AppConfig.getVideoSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
+            if (actualSize > videoMaxSizeFilter) {
+                Utils.safeDelete(savePath)
+                Logger.log("  [${index + 1}/$total] 删除 (大于${Utils.formatBytes(videoMaxSizeFilter)}): $fileName")
+                return DownloadResult(
+                    name = fileName, url = url, path = "", size = Utils.formatBytes(actualSize),
+                    md5 = md5, status = "skipped_large"
+                )
+            }
+        } else {
+            val imageMinSizeFilter = AppConfig.getImageSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
+            if (actualSize < imageMinSizeFilter) {
+                Utils.safeDelete(savePath)
+                Logger.log("  [${index + 1}/$total] 删除 (小于${Utils.formatBytes(imageMinSizeFilter)}): $fileName")
+                return DownloadResult(
+                    name = fileName, url = url, path = "", size = Utils.formatBytes(actualSize),
+                    md5 = md5, status = "skipped_small"
+                )
+            }
         }
 
         // MD5 去重（跨页面、跨并发线程；加锁避免竞态导致重复下载）
