@@ -136,12 +136,12 @@ class MainActivity : AppCompatActivity() {
                     showModeSettingsDialog()
                     true
                 }
-                R.id.action_url_dedup_settings -> {
-                    showUrlDedupSettingsDialog()
-                    true
-                }
                 R.id.action_screen_on_settings -> {
                     showScreenOnSettingsDialog()
+                    true
+                }
+                R.id.action_scraper_settings -> {
+                    showScraperSettingsDialog()
                     true
                 }
                 R.id.action_youdao_url_settings -> {
@@ -185,30 +185,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun showUrlDedupSettingsDialog() {
-        Logger.d("URL dedup settings dialog: opened")
-        val dialogView = layoutInflater.inflate(R.layout.dialog_url_dedup_settings, null)
-        val switchUrlDedup = dialogView.findViewById<SwitchCompat>(R.id.switchUrlDedup)
-
-        switchUrlDedup.isChecked = AppConfig.isUrlDedupEnabled(this)
-
-        switchUrlDedup.setOnCheckedChangeListener { _, isChecked ->
-            AppConfig.setUrlDedupEnabled(this, isChecked)
-            Logger.d("URL dedup settings dialog: url dedup changed to $isChecked")
-            Toast.makeText(
-                this,
-                if (isChecked) R.string.settings_url_dedup_on else R.string.settings_url_dedup_off,
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle(R.string.settings_url_dedup_title)
-            .setView(dialogView)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-    }
-
     private fun showScreenOnSettingsDialog() {
         Logger.d("Screen-on settings dialog: opened")
         val dialogView = layoutInflater.inflate(R.layout.dialog_screen_on_settings, null)
@@ -230,6 +206,74 @@ class MainActivity : AppCompatActivity() {
             .setTitle(R.string.settings_screen_on_title)
             .setView(dialogView)
             .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showScraperSettingsDialog() {
+        Logger.d("Scraper settings dialog: opened")
+        val dialogView = layoutInflater.inflate(R.layout.dialog_scraper_settings, null)
+        val etPageLoadTimeout = dialogView.findViewById<EditText>(R.id.etPageLoadTimeout)
+        val etRenderWait = dialogView.findViewById<EditText>(R.id.etRenderWait)
+        val etDetailApiWait = dialogView.findViewById<EditText>(R.id.etDetailApiWait)
+        val etDownloadTimeout = dialogView.findViewById<EditText>(R.id.etDownloadTimeout)
+        val etMaxVideoWorkers = dialogView.findViewById<EditText>(R.id.etMaxVideoWorkers)
+        val etMaxImageWorkers = dialogView.findViewById<EditText>(R.id.etMaxImageWorkers)
+        val etDownloadRootPath = dialogView.findViewById<EditText>(R.id.etDownloadRootPath)
+        val etImageSizeFilter = dialogView.findViewById<EditText>(R.id.etImageSizeFilter)
+        val etVideoSizeFilter = dialogView.findViewById<EditText>(R.id.etVideoSizeFilter)
+        val switchUrlDedup = dialogView.findViewById<SwitchCompat>(R.id.switchUrlDedup)
+
+        etPageLoadTimeout.setText(AppConfig.getPageLoadTimeoutMs(this).toString())
+        etRenderWait.setText(AppConfig.getRenderWaitMs(this).toString())
+        etDetailApiWait.setText(AppConfig.getDetailApiWaitMs(this).toString())
+        etDownloadTimeout.setText(AppConfig.getDownloadTimeoutSeconds(this).toString())
+        etMaxVideoWorkers.setText(AppConfig.getMaxVideoWorkers(this).toString())
+        etMaxImageWorkers.setText(AppConfig.getMaxImageWorkers(this).toString())
+        etDownloadRootPath.setText(AppConfig.getDownloadRootPath(this))
+        etImageSizeFilter.setText(AppConfig.getImageSizeFilterKb(this).toString())
+        etVideoSizeFilter.setText(AppConfig.getVideoSizeFilterMb(this).toString())
+        switchUrlDedup.isChecked = AppConfig.isUrlDedupEnabled(this)
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.scraper_settings_title)
+            .setView(dialogView)
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val pageLoadTimeout = etPageLoadTimeout.text.toString().toLongOrNull()
+                val renderWait = etRenderWait.text.toString().toLongOrNull()
+                val detailApiWait = etDetailApiWait.text.toString().toLongOrNull()
+                val downloadTimeout = etDownloadTimeout.text.toString().toIntOrNull()
+                val maxVideoWorkers = etMaxVideoWorkers.text.toString().toIntOrNull()
+                val maxImageWorkers = etMaxImageWorkers.text.toString().toIntOrNull()
+                val imageSizeFilter = etImageSizeFilter.text.toString().toLongOrNull()
+                val videoSizeFilter = etVideoSizeFilter.text.toString().toLongOrNull()
+
+                if (listOf(pageLoadTimeout, renderWait, detailApiWait, downloadTimeout, maxVideoWorkers, maxImageWorkers, imageSizeFilter, videoSizeFilter).any { it == null }) {
+                    Toast.makeText(this, R.string.scraper_settings_param_invalid, Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+
+                AppConfig.setPageLoadTimeoutMs(this, pageLoadTimeout!!)
+                AppConfig.setRenderWaitMs(this, renderWait!!)
+                AppConfig.setDetailApiWaitMs(this, detailApiWait!!)
+                AppConfig.setDownloadTimeoutSeconds(this, downloadTimeout!!)
+                AppConfig.setMaxVideoWorkers(this, maxVideoWorkers!!)
+                AppConfig.setMaxImageWorkers(this, maxImageWorkers!!)
+                AppConfig.setImageSizeFilterKb(this, imageSizeFilter!!)
+                AppConfig.setVideoSizeFilterMb(this, videoSizeFilter!!)
+
+                val rootPath = etDownloadRootPath.text.toString().trim()
+                if (rootPath.isNotEmpty() && rootPath != AppConfig.getDownloadRootPath(this)) {
+                    AppConfig.setDownloadRootPath(this, rootPath)
+                    AppConfig.initDirs(this)
+                }
+
+                AppConfig.setUrlDedupEnabled(this, switchUrlDedup.isChecked)
+                Logger.d("Scraper settings dialog: urlDedup=${switchUrlDedup.isChecked}")
+
+                Toast.makeText(this, R.string.scraper_settings_saved, Toast.LENGTH_SHORT).show()
+                Logger.d("Scraper settings dialog: saved pageLoad=$pageLoadTimeout render=$renderWait detail=$detailApiWait dlTimeout=$downloadTimeout videoW=$maxVideoWorkers imageW=$maxImageWorkers imgSizeFilter=$imageSizeFilter videoSizeFilter=$videoSizeFilter rootPath=$rootPath")
+            }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
@@ -486,6 +530,7 @@ class MainActivity : AppCompatActivity() {
                 if (AppConfig.isKeepScreenOnEnabled(this@MainActivity)) {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+                wvm.cleanup()
                 webViewManager = null
             }
         }
@@ -500,6 +545,7 @@ class MainActivity : AppCompatActivity() {
         if (AppConfig.isKeepScreenOnEnabled(this)) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+        webViewManager?.cleanup()
         webViewManager = null
         Logger.log("  抓取任务已取消")
     }

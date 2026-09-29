@@ -288,14 +288,15 @@ class WebViewManager(private val context: Context) {
         detailBodies.clear()
         hookedApiUrls.clear()
 
+        val pageLoadTimeout = AppConfig.getPageLoadTimeoutMs(context)
         val result = withContext(Dispatchers.Main) {
             webView.loadUrl(url)
             try {
-                withTimeout(AppConfig.PAGE_LOAD_TIMEOUT_MS) {
+                withTimeout(pageLoadTimeout) {
                     pageLoadDeferred!!.await()
                 }
             } catch (_: Exception) {
-                Logger.log("  页面加载超时 (${AppConfig.PAGE_LOAD_TIMEOUT_MS}ms)", "warn")
+                Logger.log("  页面加载超时 (${pageLoadTimeout}ms)", "warn")
                 false
             }
         }
@@ -457,7 +458,8 @@ class WebViewManager(private val context: Context) {
 
     // ── 等待页面渲染 ──
     suspend fun waitForRender() {
-        Logger.log("  等待页面渲染 (最多${AppConfig.RENDER_WAIT_MS}ms)...")
+        val renderWaitMs = AppConfig.getRenderWaitMs(context)
+        Logger.log("  等待页面渲染 (最多${renderWaitMs}ms)...")
         val probe = """
             (function() {
                 try {
@@ -480,10 +482,10 @@ class WebViewManager(private val context: Context) {
         """.trimIndent()
 
         try {
-            withTimeout(AppConfig.RENDER_WAIT_MS) {
+            withTimeout(renderWaitMs) {
                 val startTime = System.currentTimeMillis()
                 var renderedAt = -1L
-                while (System.currentTimeMillis() - startTime < AppConfig.RENDER_WAIT_MS) {
+                while (System.currentTimeMillis() - startTime < renderWaitMs) {
                     val rendered = evaluateJavascript(probe)
                     if (rendered == "true") {
                         renderedAt = System.currentTimeMillis()
@@ -501,19 +503,28 @@ class WebViewManager(private val context: Context) {
         delay(1500)
     }
 
-    // ── 资源清理 ──
+    // ── 轻量清理（抓取任务间复用，不销毁 WebView 原生层） ──
+    fun cleanup() {
+        Logger.log("[WebView] 清理 WebView（保留可复用状态）")
+        webView.apply {
+            onPause()
+            loadUrl("about:blank")
+            stopLoading()
+            try { removeJavascriptInterface(PageHook.BRIDGE_NAME) } catch (_: Exception) {}
+            clearHistory()
+            clearCache(true)
+        }
+    }
+
+    // ── 完整销毁（Activity 生命周期结束时调用，不可逆） ──
     fun destroy() {
         Logger.log("[WebView] 销毁 WebView 实例")
         try {
             shadowExecutor.shutdownNow()
         } catch (_: Exception) {
         }
-        webView.apply {
-            stopLoading()
-            clearHistory()
-            clearCache(true)
-            destroy()
-        }
+        cleanup()
+        webView.destroy()
     }
 
     // ── JS 桥接（用于页面与 Native 双向通信） ──

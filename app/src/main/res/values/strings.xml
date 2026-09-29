@@ -59,4 +59,23 @@
     <string name="label_youdao_fetching">正在从有道获取URL…</string>
     <string name="label_youdao_empty">未获取到URL</string>
     <string name="label_youdao_error">获取失败：%1$s</string>
+
+    <string name="settings_scraper">爬虫参数</string>
+    <string name="scraper_settings_title">爬虫参数设置</string>
+    <string name="scraper_settings_section_loading">页面加载</string>
+    <string name="scraper_settings_page_load_timeout">页面加载超时 (ms)</string>
+    <string name="scraper_settings_render_wait">渲染等待时间 (ms)</string>
+    <string name="scraper_settings_detail_api_wait">详情API等待超时 (ms)</string>
+    <string name="scraper_settings_section_download">下载</string>
+    <string name="scraper_settings_download_timeout">下载超时 (秒)</string>
+    <string name="scraper_settings_max_video_workers">视频并发数</string>
+    <string name="scraper_settings_max_image_workers">图片并发数</string>
+    <string name="scraper_settings_section_path">存储路径</string>
+    <string name="scraper_settings_download_root_path">下载根路径</string>
+    <string name="scraper_settings_section_filter">下载过滤</string>
+    <string name="scraper_settings_image_size_filter">图片最小 (KB)</string>
+    <string name="scraper_settings_video_size_filter">视频最小 (MB)</string>
+    <string name="scraper_settings_section_dedup">URL去重</string>
+    <string name="scraper_settings_param_invalid">参数值无效，请输入有效数字</string>
+    <string name="scraper_settings_saved">爬虫参数已保存</string>
 </resources>

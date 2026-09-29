@@ -7,11 +7,11 @@
         android:id="@+id/action_mode_settings"
         android:title="@string/settings_mode" />
     <item
-        android:id="@+id/action_url_dedup_settings"
-        android:title="@string/settings_url_dedup" />
-    <item
         android:id="@+id/action_screen_on_settings"
         android:title="@string/settings_screen_on" />
+    <item
+        android:id="@+id/action_scraper_settings"
+        android:title="@string/settings_scraper" />
     <item
         android:id="@+id/action_youdao_url_settings"
         android:title="@string/settings_youdao_url" />

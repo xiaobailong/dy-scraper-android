@@ -100,8 +100,22 @@ class UrlProcessor(
         val newDetailUrls = wvm.detailResponses.drop(detailStart).toList()
         Logger.log("  拦截到 ${newDetailUrls.size} 个详情 API URL")
 
-        val bodies = wvm.waitForDetailBodies(8000L)
+        // 延长等待时间：抖音页面可能很晚才发出详情 API 请求（实测 ~17s）
+        val bodies = wvm.waitForDetailBodies(AppConfig.getDetailApiWaitMs(context))
         Logger.log("  [主路径] Hook 旁听到 ${bodies.size} 个详情 API 响应体")
+
+        // 第二轮网络请求提取：详情 API 响应到达后，WebView 可能才开始加载视频/图片
+        // （douyinvod.com 等 CDN URL 会作为新的网络请求出现）
+        val secondPassRequests = wvm.collectedRequests.drop(reqStart + newRequests.size).toList()
+        val (netVideos2, netImages2) = Downloader.extractUrlsFromNetwork(secondPassRequests)
+        if (netVideos2.isNotEmpty() || netImages2.isNotEmpty()) {
+            Logger.log(
+                "  第二轮网络提取: ${netVideos2.size} 视频 + ${netImages2.size} 图片 (新增 ${secondPassRequests.size} 个请求)",
+                "info"
+            )
+            ctx.networkVideoUrls = (ctx.networkVideoUrls + netVideos2).distinct()
+            ctx.networkImageUrls = (ctx.networkImageUrls + netImages2).distinct()
+        }
         if (bodies.isEmpty() && !PageHook.ENABLE_REPLAY_FALLBACK) {
             Logger.log(
                 "  ⚠ Hook 未捕获到详情响应体（重放兜底已关闭：重放缺 a_bogus 拿不到 body），" +
@@ -175,7 +189,7 @@ class UrlProcessor(
 
         ctx.videoResults = Downloader.downloadFiles(
             ctx, AppConfig.downloadVideoDir, "video",
-            maxWorkers = AppConfig.MAX_VIDEO_WORKERS,
+            maxWorkers = AppConfig.getMaxVideoWorkers(context),
             md5Registry = md5Registry,
             videoHashRegistry = videoHashRegistry,
             cookies = wvm.getCookies(),
@@ -188,7 +202,7 @@ class UrlProcessor(
         Logger.log("  图片目录: ${AppConfig.downloadImageDir.absolutePath}")
         ctx.imageResults = Downloader.downloadFiles(
             ctx, AppConfig.downloadImageDir, "image",
-            maxWorkers = AppConfig.MAX_IMAGE_WORKERS,
+            maxWorkers = AppConfig.getMaxImageWorkers(context),
             md5Registry = md5Registry,
             cookies = wvm.getCookies(),
         )

@@ -58,6 +58,10 @@ dy-scraper-android/
 - 日志使用 `Logger` 工具类，通过 `AppConfig` 控制日志开关
 - 按钮状态管理集中在 `updateStartStopButtons()` 方法中
 
+### 交流约定（强制）
+- 所有思考、分析、回答必须使用中文
+- 代码注释可使用中文或英文，但面向用户的界面文字必须使用中文
+
 ### URL 去重规范
 - 输入层: `Utils.extractUrls()` 末尾 `.distinct()`
 - Worker 层: `ScraperWorker.readUrlList()` 末尾 `.distinct()`

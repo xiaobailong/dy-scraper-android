@@ -23,12 +23,15 @@ import java.util.concurrent.TimeUnit
 
 object Downloader {
 
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(AppConfig.DOWNLOAD_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
-        .readTimeout(AppConfig.DOWNLOAD_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
-        .followRedirects(true)
-        .retryOnConnectionFailure(true)
-        .build()
+    private val client: OkHttpClient by lazy {
+        val timeout = AppConfig.getDownloadTimeoutSeconds(com.dy.scraper.ScraperApp.instance)
+        OkHttpClient.Builder()
+            .connectTimeout(timeout.toLong(), TimeUnit.SECONDS)
+            .readTimeout(timeout.toLong(), TimeUnit.SECONDS)
+            .followRedirects(true)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
 
     // ── 视频 / 图片 URL 特征（对应 Python downloader.py） ──
     private val VIDEO_EXTS = listOf(".mp4", ".webm", ".mov", ".m4v", ".flv", ".3gp", ".ts")
@@ -38,6 +41,27 @@ object Downloader {
     private val IMAGE_DOMAINS = listOf("douyinpic.com", "pstatp.com", "byteimg.com")
 
     private data class DownloadJob(val url: String, val fileName: String, val savePath: File)
+
+    // ── 获取文件大小（HEAD 请求，对应 Python get_file_size） ──
+    private fun getFileSize(url: String): Long? {
+        return try {
+            val headRequest = Request.Builder()
+                .url(url)
+                .method("HEAD", null)
+                .header("User-Agent", AppConfig.USER_AGENT)
+                .build()
+            client.newCall(headRequest).execute().use { response ->
+                if (response.isSuccessful) {
+                    val length = response.header("Content-Length")
+                    length?.toLongOrNull()
+                } else {
+                    null
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 
     // ── 单文件下载（流式写盘，避免大视频占满内存；带 Cookie/Referer；失败重试 1 次） ──
     internal fun downloadFileSync(
@@ -193,6 +217,20 @@ object Downloader {
         val savePath = job.savePath
         val fileName = job.fileName
 
+        // 下载前 HEAD 请求检查 Content-Length（对齐 Python get_file_size 预检）
+        val fileSize = getFileSize(url)
+        val minSizeFilter = if (fileType == "video")
+            AppConfig.getVideoSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
+        else
+            AppConfig.getImageSizeFilterBytes(com.dy.scraper.ScraperApp.instance)
+        if (fileSize != null && fileSize < minSizeFilter) {
+            Logger.log("  [${index + 1}/$total] 跳过 (小于${Utils.formatBytes(minSizeFilter)}): ${url.take(80)}...")
+            return DownloadResult(
+                name = "", url = url, path = "", size = Utils.formatBytes(fileSize),
+                md5 = "", status = "skipped_small"
+            )
+        }
+
         Logger.log("  [${index + 1}/$total] 下载中: ${url.take(80)}...")
 
         val (success, info, md5) = downloadFileSync(url, savePath, referer, cookies)
@@ -205,9 +243,9 @@ object Downloader {
         }
 
         val actualSize = savePath.length()
-        if (actualSize < AppConfig.MIN_FILE_SIZE) {
+        if (actualSize < minSizeFilter) {
             Utils.safeDelete(savePath)
-            Logger.log("  [${index + 1}/$total] 删除 (小于${Utils.formatBytes(AppConfig.MIN_FILE_SIZE)}): $fileName")
+            Logger.log("  [${index + 1}/$total] 删除 (小于${Utils.formatBytes(minSizeFilter)}): $fileName")
             return DownloadResult(
                 name = fileName, url = url, path = "", size = Utils.formatBytes(actualSize),
                 md5 = md5, status = "skipped_small"

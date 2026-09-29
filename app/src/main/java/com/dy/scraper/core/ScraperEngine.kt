@@ -42,7 +42,7 @@ object ScraperEngine {
         val scrapeDao = db.scrapeDao()
 
         // ── 1. 准备环境 ──
-        AppConfig.initDirs()
+        AppConfig.initDirs(context)
         Logger.log("下载目录: ${AppConfig.downloadVideoDir.absolutePath}")
         Logger.log("结果目录: ${AppConfig.resultDir.absolutePath}")
 
