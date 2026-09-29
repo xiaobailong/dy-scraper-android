@@ -68,8 +68,11 @@ class WebViewManager(private val context: Context) {
     }
 
     constructor(context: Context, externalWebView: WebView) : this(context) {
-        // 替换 init 块中创建的 WebView 为外部传入的
-        // init 中创建的 WebView 没有引用，会被 GC
+        // 销毁 init 块创建的临时 WebView（已被 externalWebView 替换，避免内存泄漏）
+        try {
+            webView.destroy()
+        } catch (_: Exception) {
+        }
         initWebView(externalWebView)
     }
 
@@ -90,9 +93,13 @@ class WebViewManager(private val context: Context) {
 
         wv.addJavascriptInterface(JsBridge(), PageHook.BRIDGE_NAME)
 
-        // 延迟到 WebView 生命周期就绪后再安装 document-start 钩子
-        // 内部创建的 WebView 可能还没 attached → post {} 确保 provider 已创建
-        // 外部 WebView 已在布局中 attached → 直接调用也能成功
+        // WebViewClient 必须在 initWebView 中绑定（而非独立 init 块），
+        // 确保次级构造函数替换 WebView 后 still 拥有正确的 Client（含 shouldOverrideUrlLoading）
+        setupWebViewClient(wv)
+
+        // 安装 document-start 钩子
+        // 内部创建的 WebView 尚未 attached → 通过 listener 延迟安装
+        // 外部 WebView 已在布局中 → 直接安装；若 provider 未就绪则 post 重试
         if (wv.isAttachedToWindow) {
             installDocumentStartHook()
         } else {
@@ -107,49 +114,17 @@ class WebViewManager(private val context: Context) {
     }
 
     /**
-     * 安装 document-start 钩子（对应 Playwright 的 `add_init_script`）。
-     * 钩子在页面脚本之前挂到 XHR/fetch 上并快照 SSR 变量 —— 这是唯一能拿到抖音详情响应体的位置
-     * （事后重放缺 a_bogus：`[API影子] HTTP 200, 长度 0`）。
+     * 绑定 WebViewClient：负责页面生命周期回调、URL 跳转拦截（防拉起外部 App）、
+     * 网络请求收集、反检测脚本注入、钩子兜底注入。
      */
-    private fun installDocumentStartHook() {
-        try {
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                WebViewCompat.addDocumentStartJavaScript(webView, PageHook.SCRIPT, setOf("*"))
-                documentStartHookInstalled = true
-                Logger.log("  [Hook] document-start 钩子已注入（XHR/fetch 旁听 + SSR 快照）")
-            } else {
-                Logger.log("  [Hook] 当前 WebView 不支持 document-start 脚本，回退 onPageStarted 注入", "warn")
-            }
-        } catch (e: Exception) {
-            Logger.log("  [Hook] document-start 注入失败: ${e.message}，回退 onPageStarted 注入", "warn")
-        }
-    }
-
-    // ── 网络请求收集 ──
-    val collectedRequests = ConcurrentLinkedQueue<Map<String, String>>()
-    val detailResponses = ConcurrentLinkedQueue<String>()
-
-    /** 详情 API 响应体（{"url":.., "body":..}），由影子请求填充 —— 这是拿到高清视频地址的关键 */
-    val detailBodies = ConcurrentLinkedQueue<Map<String, String>>()
-
-    // ── 页面加载状态 ──
-    private var pageLoadDeferred: CompletableDeferred<Boolean>? = null
-
-    /** JS fetch 回调（requestId → 结果），由 JsBridge.onApiResponse 填充 */
-    private val jsCallbacks = ConcurrentHashMap<String, CompletableDeferred<String>>()
-    private var finalUrl: String = ""
-    var currentUrl: String = ""
-        private set
-
-    init {
-        webView.webViewClient = object : WebViewClient() {
+    private fun setupWebViewClient(wv: WebView) {
+        wv.webViewClient = object : WebViewClient() {
 
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 currentUrl = url
                 Logger.log("  WebView 开始加载: ${url.take(80)}...", "debug")
                 // 兜底：WebView 不支持 document-start 脚本时尽早注入（脚本自身幂等）。
-                // 抖音详情 API 是页面渲染后异步发的（真机日志：加载完成后约 4s 才发），这个时机仍来得及。
                 if (!documentStartHookInstalled) {
                     try {
                         view.evaluateJavascript(PageHook.SCRIPT, null)
@@ -158,8 +133,27 @@ class WebViewManager(private val context: Context) {
                 }
             }
 
+            /**
+             * 拦截外部 App 跳转（douyin://, intent://, snssdk://, aweme://）。
+             * 不拦截会导致抖音 App 被拉起，WebView 显示空白。
+             */
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                val url = request.url.toString()
+                if (url.startsWith("douyin://") ||
+                    url.startsWith("intent://") ||
+                    url.startsWith("snssdk://") ||
+                    url.startsWith("aweme://")
+                ) {
+                    Logger.log("  [拦截] 阻止外部App跳转: ${url.take(100)}", "warn")
+                    return true
+                }
+                return super.shouldOverrideUrlLoading(view, request)
+            }
+
             // 反检测脚本注入：隐藏 WebView 特征，防止被抖音识别为自动化工具
-            // 对应 Python Playwright 的 page.add_init_script()
             override fun onPageCommitVisible(view: WebView, url: String) {
                 super.onPageCommitVisible(view, url)
                 view.evaluateJavascript("""
@@ -192,26 +186,22 @@ class WebViewManager(private val context: Context) {
                 val contentType = request.requestHeaders["Content-Type"] ?: ""
                 val method = request.method
 
-                // 收集所有网络请求（对应 Playwright 的 page.on("response")）
                 collectedRequests.add(mapOf(
                     "url" to url,
                     "contentType" to contentType,
                 ))
 
-                // ── 全量请求日志（调试用，可关闭） ──
                 if (AppConfig.VERBOSE_NETWORK_LOG && !url.contains("douyinstatic.com")) {
                     val headers = request.requestHeaders.entries
                         .filter { (k, _) -> k.lowercase() in NETWORK_LOG_HEADER_WHITELIST }
                         .joinToString(", ") { (k, v) -> "$k: ${v.take(120)}" }
                     val urlShort = url.take(200)
-                    Logger.log("  [NET:$method] $urlShort", "network")
+                    Logger.log("  [NET:${method}] $urlShort", "network")
                     if (headers.isNotEmpty()) {
                         Logger.log("    Headers: $headers", "network")
                     }
                 }
 
-                // 拦截抖音详情 API 响应（对应 douyin_detail.py）—— 这里只记 URL；
-                // 响应体由 document-start 钩子（PageHook）在页面自己发请求时旁听拿到
                 if (PageHook.isDetailApiUrl(url)) {
                     Logger.log("  [API拦截] ${url.take(100)}...", "debug")
                     detailResponses.add(url)
@@ -241,6 +231,53 @@ class WebViewManager(private val context: Context) {
             }
         }
     }
+
+    /**
+     * 安装 document-start 钩子（对应 Playwright 的 `add_init_script`）。
+     * 钩子在页面脚本之前挂到 XHR/fetch 上并快照 SSR 变量 —— 这是唯一能拿到抖音详情响应体的位置
+     * （事后重放缺 a_bogus：`[API影子] HTTP 200, 长度 0`）。
+     */
+    private fun installDocumentStartHook() {
+        // 某些设备上 WebViewProvider 可能在 attached 后仍未就绪，用 post 兜底
+        val doInstall = {
+            try {
+                if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                    WebViewCompat.addDocumentStartJavaScript(webView, PageHook.SCRIPT, setOf("*"))
+                    documentStartHookInstalled = true
+                    Logger.log("  [Hook] document-start 钩子已注入（XHR/fetch 旁听 + SSR 快照）")
+                } else {
+                    Logger.log("  [Hook] 当前 WebView 不支持 document-start 脚本，回退 onPageStarted 注入", "warn")
+                }
+            } catch (e: Exception) {
+                Logger.log("  [Hook] document-start 注入失败: ${e.message}，回退 onPageStarted 注入", "warn")
+            }
+        }
+
+        try {
+            doInstall()
+        } catch (_: Exception) {
+            // 如果首次调用因 provider 未就绪而失败，post 到消息队列尾部重试
+            webView.post {
+                doInstall()
+            }
+        }
+    }
+
+    // ── 网络请求收集 ──
+    val collectedRequests = ConcurrentLinkedQueue<Map<String, String>>()
+    val detailResponses = ConcurrentLinkedQueue<String>()
+
+    /** 详情 API 响应体（{"url":.., "body":..}），由影子请求填充 —— 这是拿到高清视频地址的关键 */
+    val detailBodies = ConcurrentLinkedQueue<Map<String, String>>()
+
+    // ── 页面加载状态 ──
+    private var pageLoadDeferred: CompletableDeferred<Boolean>? = null
+
+    /** JS fetch 回调（requestId → 结果），由 JsBridge.onApiResponse 填充 */
+    private val jsCallbacks = ConcurrentHashMap<String, CompletableDeferred<String>>()
+    private var finalUrl: String = ""
+    var currentUrl: String = ""
+        private set
 
     // ── 页面加载 ──
     suspend fun loadUrl(url: String): Boolean {
