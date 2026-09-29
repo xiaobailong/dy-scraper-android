@@ -35,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var logView: TextView
     private lateinit var scrollView: android.widget.ScrollView
     private lateinit var scraperWebView: WebView
+    private lateinit var statusBar: TextView
 
     private var currentMode: RunMode = RunMode.LOCAL
 
@@ -118,6 +119,7 @@ class MainActivity : AppCompatActivity() {
         scrollView = findViewById(R.id.scrollView)
         logView = findViewById(R.id.logView)
         scraperWebView = findViewById(R.id.scraperWebView)
+        statusBar = findViewById(R.id.statusBar)
 
         llLocalMode = findViewById(R.id.llLocalMode)
         etUrlInput = findViewById(R.id.etUrlInput)
@@ -537,6 +539,7 @@ class MainActivity : AppCompatActivity() {
         urls.forEach { Logger.log("  $it") }
 
         updateStartStopButtons(running = true)
+        updateStatus(getString(R.string.status_scraping))
 
         // 抓取过程中保持屏幕常亮，防止锁屏中断（受设置开关控制）
         if (AppConfig.isKeepScreenOnEnabled(this)) {
@@ -551,6 +554,9 @@ class MainActivity : AppCompatActivity() {
         webViewManager = wvm
 
         scrapeJob = lifecycleScope.launch {
+            var successCount = 0
+            var failedCount = 0
+            var completed = false
             try {
                 val output = ScraperEngine.run(
                     context = this@MainActivity,
@@ -562,8 +568,11 @@ class MainActivity : AppCompatActivity() {
                         },
                     ),
                 )
+                successCount = output.stats.successCount
+                failedCount = output.stats.failedCount
+                completed = true
                 Logger.log("")
-                Logger.log("抓取完成! 成功: ${output.stats.successCount}, 失败: ${output.stats.failedCount}")
+                Logger.log("抓取完成! 成功: $successCount, 失败: $failedCount")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 Logger.log("  抓取任务被用户取消")
                 throw e
@@ -572,6 +581,9 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 scraperWebView.visibility = View.GONE
                 updateStartStopButtons(running = false)
+                if (completed) {
+                    updateStatus(getString(R.string.status_done, successCount, failedCount))
+                }
                 if (AppConfig.isKeepScreenOnEnabled(this@MainActivity)) {
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
@@ -587,6 +599,7 @@ class MainActivity : AppCompatActivity() {
         scrapeJob?.cancel()
         scraperWebView.visibility = View.GONE
         updateStartStopButtons(running = false)
+        updateStatus(getString(R.string.status_cancelled))
         if (AppConfig.isKeepScreenOnEnabled(this)) {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
@@ -607,6 +620,10 @@ class MainActivity : AppCompatActivity() {
                 btnYoudaoStop.isEnabled = running
             }
         }
+    }
+
+    private fun updateStatus(message: String) {
+        runOnUiThread { statusBar.text = message }
     }
 
     private fun setupLogger() {

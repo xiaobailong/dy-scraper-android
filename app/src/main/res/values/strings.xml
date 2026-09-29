@@ -54,6 +54,12 @@
     <string name="btn_save_draft">暂存</string>
     <string name="draft_saved">已暂存</string>
     <string name="btn_fetch_youdao">获取有道URL</string>
+    <string name="status_ready">就绪</string>
+    <string name="status_scraping">正在抓取…</string>
+    <string name="status_done">抓取完成! 成功: %1$d, 失败: %2$d</string>
+    <string name="status_cancelled">抓取已取消</string>
+    <string name="status_error">抓取出错</string>
+
     <string name="hint_url_input">请粘贴链接，每行一个\ne.g. https://www.douyin.com/video/xxx</string>
     <string name="label_url_list">提取到的URL（共%1$d个）</string>
     <string name="label_youdao_fetching">正在从有道获取URL…</string>

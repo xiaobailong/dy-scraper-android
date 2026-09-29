@@ -150,4 +150,17 @@
             android:textSize="12sp" />
     </ScrollView>
 
+    <TextView
+        android:id="@+id/statusBar"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:background="?attr/colorPrimary"
+        android:gravity="center"
+        android:paddingHorizontal="12dp"
+        android:text="@string/status_ready"
+        android:textColor="@android:color/white"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
 </LinearLayout>
