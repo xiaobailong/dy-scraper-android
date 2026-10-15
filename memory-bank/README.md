@@ -20,6 +20,8 @@
 | 详情响应体到底怎么拿（旁听 vs 重放） | ADR-006（旧 ADR-003） | D |
 | 进度日志恒为 `0/N` | ISSUE-002 | I |
 | 汇总「文件总数 ≠ 成功+失败+跳过」 | ISSUE-003 | I |
+| 加密页列表比手机里少一个文件（手机 7 / 列表 6）—— Android 11 的 Download 目录按创建者隔离 | ISSUE-004（已修复，需授权“所有文件访问”） | I |
+| 本机 adb devices 恒为空（华为手机：ADB 接口缺 DeviceInterfaceGUIDs） | PIT-011 | P |
 | `evaluateJavascript` 取 Promise 结果只拿到 `{}`（长度 2） | PIT-001 | P |
 | 网络请求里的视频 URL 匹配不到（douyinvod 无 .mp4 后缀） | PIT-002 | P |
 | 同一个视频下了好几份（不同码率/清晰度） | PIT-003 | P |
@@ -27,3 +29,4 @@
 | 改 `.bat` / `memory-bank` 后换行或 BOM 不对 | PIT-005 | P |
 | tag / Release 名带 `-b<versionCode>` 后缀 | ADR-005 | D |
 | 详情 API 响应体抓不到 / SSR 数据怎么取 | ADR-003 ADR-004 | D |
+| 加密页「刷新/全选」交互：顶部下拉刷新 + 列表首行全选 | ADR-008 | D |

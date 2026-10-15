@@ -51,8 +51,7 @@
 
     <string name="btn_start">开始抓取</string>
     <string name="btn_stop">停止抓取</string>
-    <string name="btn_save_draft">暂存</string>
-    <string name="draft_saved">已暂存</string>
+    <string name="btn_clear_input">清空</string>
     <string name="btn_fetch_youdao">获取有道URL</string>
     <string name="status_ready">就绪</string>
     <string name="status_scraping">正在抓取…</string>
@@ -97,7 +96,11 @@
     <string name="encrypt_btn_export_key">导出密钥</string>
     <string name="encrypt_btn_import_key">导入密钥</string>
     <string name="encrypt_btn_generate_key">生成密钥</string>
-    <string name="encrypt_file_count">共 %1$d 个文件（已选 %2$d 个）</string>
+    <string name="encrypt_select_all_row">全选（已选 %1$d/%2$d）</string>
+    <string name="encrypt_unselect_all_row">取消全选（已选 %1$d/%2$d）</string>
+    <string name="encrypt_btn_grant_storage">授予“所有文件访问”</string>
+    <string name="encrypt_storage_hint">Android 11+ 的 Download 目录按“创建者”隔离：本 App 看不到其他 App / 电脑传进来的文件（列表会少文件）。授予“所有文件访问”后即可显示全部文件。</string>
+    <string name="encrypt_file_count">共 %1$d 个文件（已选 %2$d 个）· 列表顶部下拉刷新</string>
     <string name="encrypt_no_key">尚未生成或导入密钥\n请先生成密钥或导入已有密钥</string>
     <string name="encrypt_empty">暂无媒体文件</string>
     <string name="encrypt_thumbnail_desc">缩略图</string>

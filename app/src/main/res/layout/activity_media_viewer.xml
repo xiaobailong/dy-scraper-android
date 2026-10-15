@@ -1,35 +1,41 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="#FF000000">
 
-    <ImageView
-        android:id="@+id/ivFullscreen"
+    <FrameLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"
-        android:scaleType="fitCenter"
-        android:contentDescription="@string/media_viewer_image_desc" />
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/playerView"
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/vpMediaViewer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_margin="16dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="@android:color/transparent"
+            android:tint="@android:color/white"
+            android:scaleType="fitCenter"
+            android:contentDescription="@string/media_viewer_close" />
+
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/tvMediaIndex"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:visibility="gone"
-        app:use_controller="true"
-        app:show_buffering="when_playing" />
+        android:layout_height="wrap_content"
+        android:background="#FF000000"
+        android:gravity="center"
+        android:paddingVertical="8dp"
+        android:textColor="@android:color/white"
+        android:textSize="14sp" />
 
-    <ImageButton
-        android:id="@+id/btnClose"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:layout_margin="16dp"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
-        android:background="@android:color/transparent"
-        android:tint="@android:color/white"
-        android:scaleType="fitCenter"
-        android:contentDescription="@string/media_viewer_close" />
-
-</FrameLayout>
+</LinearLayout>

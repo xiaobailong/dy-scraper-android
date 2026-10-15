@@ -2,9 +2,12 @@ package com.dy.scraper.ui
 
 import android.graphics.BitmapFactory
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.MediaItem
@@ -12,6 +15,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.dy.scraper.R
 import com.dy.scraper.crypto.CryptoManager
 import com.dy.scraper.util.Logger
@@ -20,126 +25,216 @@ import java.io.File
 class MediaViewerActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_FILE_PATH = "file_path"
-        const val EXTRA_FILE_NAME = "file_name"
-        const val EXTRA_IS_VIDEO = "is_video"
-        const val EXTRA_IS_ENCRYPTED = "is_encrypted"
+        const val EXTRA_FILE_PATHS = "file_paths"
+        const val EXTRA_FILE_NAMES = "file_names"
+        const val EXTRA_IS_VIDEOS = "is_videos"
+        const val EXTRA_IS_ENCRYPTEDS = "is_encrypteds"
+        const val EXTRA_CURRENT_INDEX = "current_index"
     }
 
-    private var player: ExoPlayer? = null
-    private var tempDecryptedFile: File? = null
+    private lateinit var viewPager: ViewPager2
+    private var currentIndex: Int = 0
+    private var filePaths: Array<String> = emptyArray()
+    private var fileNames: Array<String> = emptyArray()
+    private var isVideos: BooleanArray = booleanArrayOf()
+    private var isEncrypteds: BooleanArray = booleanArrayOf()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_media_viewer)
 
-        val filePath = intent.getStringExtra(EXTRA_FILE_PATH) ?: run {
+        filePaths = intent.getStringArrayExtra(EXTRA_FILE_PATHS) ?: emptyArray()
+        fileNames = intent.getStringArrayExtra(EXTRA_FILE_NAMES) ?: emptyArray()
+        isVideos = intent.getBooleanArrayExtra(EXTRA_IS_VIDEOS) ?: booleanArrayOf()
+        isEncrypteds = intent.getBooleanArrayExtra(EXTRA_IS_ENCRYPTEDS) ?: booleanArrayOf()
+        currentIndex = intent.getIntExtra(EXTRA_CURRENT_INDEX, 0).coerceIn(0, (filePaths.size - 1).coerceAtLeast(0))
+
+        if (filePaths.isEmpty()) {
             finish()
             return
         }
-        val fileName = intent.getStringExtra(EXTRA_FILE_NAME) ?: "unknown"
-        val isVideo = intent.getBooleanExtra(EXTRA_IS_VIDEO, false)
-        val isEncrypted = intent.getBooleanExtra(EXTRA_IS_ENCRYPTED, false)
 
-        title = fileName
+        title = fileNames.getOrElse(currentIndex) { "unknown" }
 
-        val ivFullscreen = findViewById<ImageView>(R.id.ivFullscreen)
-        val playerView = findViewById<PlayerView>(R.id.playerView)
+        viewPager = findViewById(R.id.vpMediaViewer)
         val btnClose = findViewById<ImageButton>(R.id.btnClose)
+        val tvIndex = findViewById<TextView>(R.id.tvMediaIndex)
 
         btnClose.setOnClickListener { finish() }
 
-        val sourceFile = File(filePath)
-        if (!sourceFile.exists()) {
-            Toast.makeText(this, "文件不存在", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
+        viewPager.adapter = MediaPagerAdapter()
+        viewPager.setCurrentItem(currentIndex, false)
 
-        if (isEncrypted) {
-            val key = CryptoManager.getKey(this)
-            if (key == null) {
-                Toast.makeText(this, R.string.encrypt_no_key_error, Toast.LENGTH_SHORT).show()
-                finish()
-                return
-            }
+        updateIndexText(tvIndex)
 
-            try {
-                tempDecryptedFile = File(cacheDir, "viewer_" + System.currentTimeMillis() + "_" + fileName)
-                CryptoManager.decryptFile(sourceFile, tempDecryptedFile!!, key)
-                showMedia(tempDecryptedFile!!, isVideo, ivFullscreen, playerView)
-            } catch (e: Exception) {
-                Logger.d("MediaViewerActivity: 解密失败: ${e.message}")
-                Toast.makeText(this, R.string.media_viewer_decrypt_failed, Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        } else {
-            showMedia(sourceFile, isVideo, ivFullscreen, playerView)
-        }
-    }
-
-    private fun showMedia(file: File, isVideo: Boolean, imageView: ImageView, playerView: PlayerView) {
-        if (isVideo) {
-            showVideo(file, playerView)
-        } else {
-            showImage(file, imageView)
-        }
-    }
-
-    private fun showImage(file: File, imageView: ImageView) {
-        imageView.visibility = View.VISIBLE
-        try {
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
-            if (bitmap != null) {
-                imageView.setImageBitmap(bitmap)
-            } else {
-                Toast.makeText(this, "无法加载图片", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        } catch (e: Exception) {
-            Logger.d("MediaViewerActivity: 图片加载失败: ${e.message}")
-            Toast.makeText(this, "图片加载失败", Toast.LENGTH_SHORT).show()
-            finish()
-        }
-    }
-
-    private fun showVideo(file: File, playerView: PlayerView) {
-        playerView.visibility = View.VISIBLE
-
-        val exoPlayer = ExoPlayer.Builder(this).build()
-        player = exoPlayer
-        playerView.player = exoPlayer
-
-        val mediaItem = MediaItem.fromUri(file.toURI().toString())
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = true
-
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                Logger.d("MediaViewerActivity: 视频播放错误: ${error.message}")
-                Toast.makeText(this@MediaViewerActivity, "视频播放失败: ${error.message}", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    exoPlayer.seekTo(0)
-                    exoPlayer.playWhenReady = false
-                }
+        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                currentIndex = position
+                title = fileNames.getOrElse(position) { "unknown" }
+                updateIndexText(tvIndex)
             }
         })
     }
 
-    override fun onStop() {
-        super.onStop()
-        player?.playWhenReady = false
+    private fun updateIndexText(tvIndex: TextView) {
+        tvIndex.text = "${currentIndex + 1} / ${filePaths.size}"
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        player?.release()
-        player = null
-        tempDecryptedFile?.delete()
+    }
+
+    inner class MediaPagerAdapter : RecyclerView.Adapter<MediaPagerAdapter.MediaViewHolder>() {
+
+        override fun getItemCount(): Int = filePaths.size
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_media_page, parent, false)
+            return MediaViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: MediaViewHolder, position: Int) {
+            holder.releasePlayer()
+            holder.bind(position)
+        }
+
+        override fun onViewRecycled(holder: MediaViewHolder) {
+            super.onViewRecycled(holder)
+            holder.releasePlayer()
+        }
+
+        inner class MediaViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            private val imageView: ImageView = view.findViewById(R.id.ivPageImage)
+            private val playerView: PlayerView = view.findViewById(R.id.pvPageVideo)
+            private var player: ExoPlayer? = null
+            private var tempDecryptedFile: File? = null
+
+            fun bind(position: Int) {
+                val filePath = filePaths[position]
+                val isVideo = isVideos.getOrElse(position) { false }
+                val isEncrypted = isEncrypteds.getOrElse(position) { false }
+
+                val sourceFile = File(filePath)
+                if (!sourceFile.exists()) {
+                    Toast.makeText(this@MediaViewerActivity, "文件不存在", Toast.LENGTH_SHORT).show()
+                    return
+                }
+
+                if (isEncrypted) {
+                    val key = CryptoManager.getKey(this@MediaViewerActivity)
+                    if (key == null) {
+                        Toast.makeText(this@MediaViewerActivity, R.string.encrypt_no_key_error, Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                    try {
+                        tempDecryptedFile = File(cacheDir, "viewer_${System.currentTimeMillis()}_${fileNames.getOrElse(position) { "unknown" }}")
+                        CryptoManager.decryptFile(sourceFile, tempDecryptedFile!!, key)
+                        showMedia(tempDecryptedFile!!, isVideo)
+                    } catch (e: Exception) {
+                        Logger.d("MediaViewerActivity: 解密失败: ${e.message}")
+                        Toast.makeText(this@MediaViewerActivity, R.string.media_viewer_decrypt_failed, Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    showMedia(sourceFile, isVideo)
+                }
+            }
+
+            private fun showMedia(file: File, isVideo: Boolean) {
+                if (isVideo) {
+                    playerView.visibility = View.VISIBLE
+                    imageView.visibility = View.GONE
+                    showVideo(file)
+                } else {
+                    playerView.visibility = View.GONE
+                    imageView.visibility = View.VISIBLE
+                    showImage(file)
+                }
+            }
+
+            private fun showImage(file: File) {
+                try {
+                    val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                    if (bitmap != null) {
+                        imageView.setImageBitmap(bitmap)
+                    } else {
+                        Toast.makeText(this@MediaViewerActivity, "无法加载图片", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Logger.d("MediaViewerActivity: 图片加载失败: ${e.message}")
+                }
+            }
+
+            private fun showVideo(file: File) {
+                Logger.d("MediaViewerActivity: showVideo 开始，文件=${file.name}，路径=${file.absolutePath}")
+                val exoPlayer = ExoPlayer.Builder(this@MediaViewerActivity).build()
+                player = exoPlayer
+                playerView.player = exoPlayer
+                Logger.d("MediaViewerActivity: ExoPlayer 创建完成，已绑定到 PlayerView")
+
+                val mediaItem = MediaItem.fromUri(file.toURI().toString())
+                exoPlayer.setMediaItem(mediaItem)
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                Logger.d("MediaViewerActivity: setMediaItem + prepare + playWhenReady=true 完成")
+
+                val playPauseBtn = playerView.findViewById<ImageButton>(R.id.exo_play_pause)
+                Logger.d("MediaViewerActivity: playPauseBtn 查找结果=${playPauseBtn != null}")
+                playPauseBtn?.setOnClickListener {
+                    val oldVal = exoPlayer.playWhenReady
+                    exoPlayer.playWhenReady = !oldVal
+                    Logger.d("MediaViewerActivity: 播放/暂停按钮点击，playWhenReady $oldVal -> ${!oldVal}，currentPosition=${exoPlayer.currentPosition}")
+                }
+                playerView.findViewById<ImageButton>(androidx.media3.ui.R.id.exo_rew)?.setOnClickListener {
+                    val target = (exoPlayer.currentPosition - 5000).coerceAtLeast(0)
+                    Logger.d("MediaViewerActivity: 快退按钮点击，${exoPlayer.currentPosition} -> $target")
+                    exoPlayer.seekTo(target)
+                }
+                playerView.findViewById<ImageButton>(androidx.media3.ui.R.id.exo_ffwd)?.setOnClickListener {
+                    val target = (exoPlayer.currentPosition + 5000).coerceAtMost(exoPlayer.duration)
+                    Logger.d("MediaViewerActivity: 快进按钮点击，${exoPlayer.currentPosition} -> $target，duration=${exoPlayer.duration}")
+                    exoPlayer.seekTo(target)
+                }
+
+                exoPlayer.addListener(object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        Logger.d("MediaViewerActivity: 视频播放错误: ${error.message}")
+                        Toast.makeText(this@MediaViewerActivity, "视频播放失败: ${error.message}", Toast.LENGTH_SHORT).show()
+                    }
+
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        val stateName = when (playbackState) {
+                            Player.STATE_IDLE -> "IDLE"
+                            Player.STATE_BUFFERING -> "BUFFERING"
+                            Player.STATE_READY -> "READY"
+                            Player.STATE_ENDED -> "ENDED"
+                            else -> "UNKNOWN($playbackState)"
+                        }
+                        Logger.d("MediaViewerActivity: onPlaybackStateChanged=$stateName，playWhenReady=${exoPlayer.playWhenReady}")
+                        if (playbackState == Player.STATE_ENDED) {
+                            exoPlayer.seekTo(0)
+                            exoPlayer.playWhenReady = false
+                            Logger.d("MediaViewerActivity: 播放结束，seekTo(0) + playWhenReady=false")
+                        }
+                    }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        Logger.d("MediaViewerActivity: onIsPlayingChanged=$isPlaying")
+                        playPauseBtn?.setImageResource(
+                            if (isPlaying) androidx.media3.ui.R.drawable.exo_icon_pause else androidx.media3.ui.R.drawable.exo_icon_play
+                        )
+                    }
+                })
+            }
+
+            fun releasePlayer() {
+                Logger.d("MediaViewerActivity: releasePlayer 被调用")
+                playerView.player = null
+                player?.release()
+                player = null
+                tempDecryptedFile?.delete()
+                tempDecryptedFile = null
+            }
+        }
     }
 }

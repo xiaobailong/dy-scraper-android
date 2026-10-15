@@ -88,12 +88,29 @@ object PageHook {
 
     function report(u, body) {
         try {
-            if (!body) return;
+            if (!body) {
+                reportFiltered(u, 'empty');
+                return;
+            }
             var s = String(body);
-            if (s.length < 16) return;                  // '{}' / 空壳
-            if (s.charAt(0) === '<') return;            // 风控返回的整页 HTML
+            if (s.length < 16) {
+                reportFiltered(u, 'too_short(' + s.length + '):' + s);
+                return;
+            }
+            if (s.charAt(0) === '<') {
+                reportFiltered(u, 'html(' + s.length + ' chars):' + s.substring(0, 200));
+                return;
+            }
             if (window.DyBridge && window.DyBridge.onApiBody) {
                 window.DyBridge.onApiBody(String(u || ''), s);
+            }
+        } catch (e) {}
+    }
+
+    function reportFiltered(u, reason) {
+        try {
+            if (window.DyBridge && window.DyBridge.onApiFiltered) {
+                window.DyBridge.onApiFiltered(String(u || ''), String(reason || ''));
             }
         } catch (e) {}
     }
@@ -119,19 +136,52 @@ object PageHook {
         if (XHR && XHR.prototype) {
             var _open = XHR.prototype.open;
             var _send = XHR.prototype.send;
+            var _setResponseType = Object.getOwnPropertyDescriptor(XHR.prototype, 'responseType');
             XHR.prototype.open = function(m, u) {
                 try { this.__dyUrl = u; this.__dyMethod = m; } catch (e) {}
                 return _open.apply(this, arguments);
             };
+            // 拦截 responseType 赋值，记录原始值（部分站点用 blob/arraybuffer 导致 responseText 为空）
+            try {
+                Object.defineProperty(XHR.prototype, 'responseType', {
+                    configurable: true,
+                    get: function() { return this.__dyRt || ''; },
+                    set: function(v) {
+                        this.__dyRt = v;
+                        try { _setResponseType.set.call(this, v); } catch (e) {}
+                    }
+                });
+            } catch (e) {}
             XHR.prototype.send = function() {
                 try {
                     var xhr = this;
                     xhr.addEventListener('loadend', function() {
                         try {
                             var t = '';
-                            var rt = xhr.responseType;
-                            if (!rt || rt === 'text') t = xhr.responseText;
-                            else if (rt === 'json') t = JSON.stringify(xhr.response);
+                            var rt = xhr.__dyRt || xhr.responseType || '';
+                            if (!rt || rt === 'text') {
+                                t = xhr.responseText;
+                            } else if (rt === 'json') {
+                                try { t = JSON.stringify(xhr.response); } catch (e) {}
+                            } else if (rt === 'blob' || rt === 'arraybuffer') {
+                                // blob/arraybuffer 无法同步读取，用 FileReader 异步读取后再上报
+                                try {
+                                    var blob = (rt === 'blob') ? xhr.response : new Blob([xhr.response]);
+                                    if (blob && blob.size > 0) {
+                                        var reader = new FileReader();
+                                        reader.onload = function() {
+                                            try {
+                                                var txt = String(reader.result || '');
+                                                reportAll(xhr.__dyUrl, xhr.__dyMethod, xhr.status,
+                                                    xhr.getResponseHeader('Content-Type') || '', txt);
+                                                if (hit(xhr.__dyUrl)) report(xhr.__dyUrl, txt);
+                                            } catch (e) {}
+                                        };
+                                        reader.readAsText(blob);
+                                        return;
+                                    }
+                                } catch (e) {}
+                            }
                             reportAll(xhr.__dyUrl, xhr.__dyMethod, xhr.status,
                                 xhr.getResponseHeader('Content-Type') || '', t);
                             if (hit(xhr.__dyUrl)) report(xhr.__dyUrl, t);

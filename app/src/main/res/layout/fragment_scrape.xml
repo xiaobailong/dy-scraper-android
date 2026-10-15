@@ -30,11 +30,11 @@
             android:orientation="horizontal">
 
             <Button
-                android:id="@+id/btnLocalSave"
+                android:id="@+id/btnClearInput"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="@string/btn_save_draft" />
+                android:text="@string/btn_clear_input" />
 
             <Button
                 android:id="@+id/btnLocalStart"

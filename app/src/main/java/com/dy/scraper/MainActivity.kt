@@ -40,6 +40,8 @@ class MainActivity : AppCompatActivity() {
 
         pagerAdapter = MainPagerAdapter(this)
         viewPager.adapter = pagerAdapter
+        // 保留两个 Fragment 的视图，避免切换 tab 时销毁重建（防止 WebView/抓取任务丢失）
+        viewPager.offscreenPageLimit = 2
 
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->
             tab.text = when (position) {

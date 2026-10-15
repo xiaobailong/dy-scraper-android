@@ -51,6 +51,7 @@
             android:layout_marginStart="4dp"
             android:text="@string/encrypt_btn_import_key"
             android:textSize="12sp" />
+
     </LinearLayout>
 
     <TextView
@@ -62,17 +63,75 @@
         android:textSize="13sp"
         android:text="@string/encrypt_file_count" />
 
+    <LinearLayout
+        android:id="@+id/llStorageHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="8dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="8dp"
+        android:background="@color/card_background"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/encrypt_storage_hint"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnGrantStorage"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="4dp"
+            android:text="@string/encrypt_btn_grant_storage"
+            android:textSize="13sp" />
+    </LinearLayout>
+
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:background="@color/divider" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvMediaFiles"
+    <!-- 顶部下拉刷新：SwipeRefreshLayout 里放 FrameLayout，列表与空态提示叠在一起，
+         这样列表为空时也能下拉刷新；是否允许下拉由 EncryptFragment 的 OnChildScrollUpCallback 判定（只在列表滚到顶部时） -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false" />
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvMediaFiles"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false" />
+
+            <LinearLayout
+                android:id="@+id/llEmptyHint"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="false"
+                android:focusable="false"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/encrypt_empty"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="16sp" />
+            </LinearLayout>
+        </FrameLayout>
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <LinearLayout
         android:id="@+id/llNoKeyHint"
@@ -97,23 +156,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="@string/encrypt_btn_generate_key" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/llEmptyHint"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:visibility="gone">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/encrypt_empty"
-            android:textColor="@color/text_secondary"
-            android:textSize="16sp" />
     </LinearLayout>
 
 </LinearLayout>

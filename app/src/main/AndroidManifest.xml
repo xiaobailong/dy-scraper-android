@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -15,6 +16,20 @@
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
+
+    <!-- Android 13+ 的媒体读取权限 -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!--
+      Android 11+ 的 scoped storage 对 Download/ 目录按“创建者”隔离：
+      本 App 只能看到 owner_package_name == com.dy.scraper 的文件，
+      其他 App / 电脑 MTP 传进来的文件在列表里看不到（表现为“手机里有 N 个、列表只有 N-1 个”）。
+      下载/去重/加密都需要看到目录里的全部文件，因此申请“所有文件访问”。
+    -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <application
         android:name=".ScraperApp"

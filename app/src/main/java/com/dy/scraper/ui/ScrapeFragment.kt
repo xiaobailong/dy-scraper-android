@@ -5,7 +5,10 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.DocumentsContract
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -29,6 +32,7 @@ import com.dy.scraper.util.Utils
 import com.dy.scraper.util.YoudaoFetcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 class ScrapeFragment : Fragment() {
 
@@ -41,9 +45,9 @@ class ScrapeFragment : Fragment() {
 
     private lateinit var llLocalMode: View
     private lateinit var etUrlInput: EditText
+    private lateinit var btnClearInput: Button
     private lateinit var btnLocalStart: Button
     private lateinit var btnLocalStop: Button
-    private lateinit var btnLocalSave: Button
 
     private lateinit var llYoudaoMode: View
     private lateinit var btnFetchYoudao: Button
@@ -57,6 +61,10 @@ class ScrapeFragment : Fragment() {
 
     private var webViewManager: WebViewManager? = null
     private var scrapeJob: Job? = null
+
+    private var touchStartX = 0f
+    private var touchStartY = 0f
+    private var touchSlop = 0
 
     var onStatusUpdate: ((String) -> Unit)? = null
 
@@ -115,11 +123,43 @@ class ScrapeFragment : Fragment() {
         logView = view.findViewById(R.id.logView)
         scraperWebView = view.findViewById(R.id.scraperWebView)
 
+        // 解决 ViewPager2 与 WebView 的水平滑动冲突：
+        // 当用户在 WebView 内水平滑动（如抖音滑块验证）时，禁止父 ViewPager2 拦截触摸事件，
+        // 让 WebView 完整处理水平滑动，避免拖动滑块时整个 tab 跟着切换。
+        touchSlop = android.view.ViewConfiguration.get(requireContext()).scaledTouchSlop
+        scraperWebView.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchStartX = event.x
+                    touchStartY = event.y
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = abs(event.x - touchStartX)
+                    val dy = abs(event.y - touchStartY)
+                    if (dx > dy && dx > touchSlop) {
+                        v.parent.requestDisallowInterceptTouchEvent(true)
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.parent.requestDisallowInterceptTouchEvent(false)
+                }
+            }
+            false
+        }
+
+        // 防御性处理：若视图被系统回收后重建，webViewManager 仍持有旧 WebView 引用，需销毁重建
+        if (webViewManager != null) {
+            Logger.d("ScrapeFragment: 视图重建，清理旧 WebViewManager")
+            webViewManager?.destroy()
+            webViewManager = null
+            scraperWebView.visibility = View.GONE
+        }
+
         llLocalMode = view.findViewById(R.id.llLocalMode)
         etUrlInput = view.findViewById(R.id.etUrlInput)
+        btnClearInput = view.findViewById(R.id.btnClearInput)
         btnLocalStart = view.findViewById(R.id.btnLocalStart)
         btnLocalStop = view.findViewById(R.id.btnLocalStop)
-        btnLocalSave = view.findViewById(R.id.btnLocalSave)
 
         llYoudaoMode = view.findViewById(R.id.llYoudaoMode)
         btnFetchYoudao = view.findViewById(R.id.btnFetchYoudao)
@@ -132,6 +172,21 @@ class ScrapeFragment : Fragment() {
         setupButtons()
         setupLogger()
         applyMode(RunMode.fromPrefs(requireContext()))
+
+        etUrlInput.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                saveDraftSilent()
+            }
+        })
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (currentMode == RunMode.LOCAL) {
+            loadDraft()
+        }
     }
 
     fun showScraperSettingsDialog() {
@@ -344,13 +399,12 @@ class ScrapeFragment : Fragment() {
         }
     }
 
-    private fun saveDraft() {
+    private fun saveDraftSilent() {
         val text = etUrlInput.text.toString()
         requireActivity().getSharedPreferences(Logger.PREFS_NAME, android.content.Context.MODE_PRIVATE)
             .edit()
             .putString(RunMode.PREFS_KEY_DRAFT_URLS, text)
             .apply()
-        Toast.makeText(requireContext(), R.string.draft_saved, Toast.LENGTH_SHORT).show()
         Logger.d("Draft saved: ${text.lines().size} lines")
     }
 
@@ -364,7 +418,10 @@ class ScrapeFragment : Fragment() {
     }
 
     private fun setupButtons() {
-        btnLocalSave.setOnClickListener { saveDraft() }
+        btnClearInput.setOnClickListener {
+            etUrlInput.text.clear()
+            saveDraftSilent()
+        }
         btnLocalStart.setOnClickListener {
             val urls = parseUrlInput()
             if (urls.isEmpty()) {
@@ -474,7 +531,6 @@ class ScrapeFragment : Fragment() {
             } catch (e: Exception) {
                 Logger.log("抓取异常: ${e.message}", "error")
             } finally {
-                scraperWebView.visibility = View.GONE
                 updateStartStopButtons(running = false)
                 if (completed) {
                     onStatusUpdate?.invoke(getString(R.string.status_done, successCount, failedCount))
@@ -492,7 +548,6 @@ class ScrapeFragment : Fragment() {
         Logger.logSection("停止抓取任务")
         Logger.log("取消抓取协程...")
         scrapeJob?.cancel()
-        scraperWebView.visibility = View.GONE
         updateStartStopButtons(running = false)
         onStatusUpdate?.invoke(getString(R.string.status_cancelled))
         val activity = requireActivity()
@@ -524,10 +579,17 @@ class ScrapeFragment : Fragment() {
 
     override fun onDestroyView() {
         Logger.d("ScrapeFragment: onDestroyView")
+        // 注意：不在这里销毁 webViewManager，因为 offscreenPageLimit=2 通常不会触发视图销毁；
+        // 若极端情况下被系统回收，抓取任务仍需保留 WebView 实例，待 onDestroy 统一清理。
         scrapeJob?.cancel()
-        webViewManager?.destroy()
-        webViewManager = null
         Logger.removeListener(logListener)
         super.onDestroyView()
+    }
+
+    override fun onDestroy() {
+        Logger.d("ScrapeFragment: onDestroy")
+        webViewManager?.destroy()
+        webViewManager = null
+        super.onDestroy()
     }
 }

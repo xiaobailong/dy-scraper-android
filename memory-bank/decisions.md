@@ -75,3 +75,24 @@
 - 备选与为何不选: ① 保留 aHash 只是把阈值降到 0~2 —— 安全区间几乎失去去重能力；② 引入第三方 imagehash 库 —— Android 生态没有等价轻量库，且要新增离线依赖。
 - 影响与约束: 哈希只做即时比较、不落库 → 无需数据迁移；采样从 8x8 提升到 32x32，单张图开销仍很小；
   `checkAndDedup` 仍会对目录内每张已有图重算 pHash（性能项，未改，见 ISSUE 待办）。
+
+## ADR-008 加密页：刷新改为「列表顶部下拉」，全选移到「列表首行」
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 加密页原来用一整行放「刷新 + 全选」两个按钮，挤占列表高度。用户要求去掉按钮：刷新改成"列表顶部继续下拉"触发，
+  全选另换一种不常驻按钮的实现（先给方案、确认后执行）。
+- 决策:
+  ① 刷新 → `androidx.swiperefreshlayout:swiperefreshlayout:1.1.0` 的 `SwipeRefreshLayout`：`RecyclerView` 包在 `FrameLayout` 里、
+     空态提示 `llEmptyHint` 做覆盖层（列表常驻可见，空列表也能下拉）；`setOnChildScrollUpCallback { _, _ -> rvMediaFiles.canScrollVertically(-1) }`
+     保证只在列表滚到顶部时才允许下拉；`refreshFileList()` 的 `finally` 里 `isRefreshing = false`，原「正在刷新…」Toast 删除；
+  ② 全选 → RecyclerView 首行：新增 `res/layout/item_select_all_row.xml`（复选框 + 文案），`EncryptAdapter` 加 `showSelectAllRow`
+     与 `headerOffset`，首行 `viewType = TYPE_SELECT_ALL_ROW`，点击走 `toggleSelectAll()`（全选 ↔ 取消全选），**列表为空时不显示首行**；
+  ③ 首行禁止左滑删除：`ItemTouchHelper.getMovementFlags` 遇到 `EncryptAdapter.SelectAllViewHolder` 返回 `makeMovementFlags(0, 0)`。
+- 备选与为何不选: ① 长按进入多选模式（相册式上下文工具条）——交互更顺，但必须长按一次才能全选，且改动面更大；
+  ② 收进工具栏「⋮」溢出菜单——多两步点击，还要与 `MainActivity` 现有 menu/popup 协调（切 tab 需 `invalidateOptionsMenu`）；
+  ③ 长按「加密」按钮=全选并加密——语义隐蔽、易误操作。**用户选定首行方案**。
+- 影响与约束: 新增一个官方小依赖（本机 Gradle 缓存已有 1.1.0，离线可构建）；
+  `EncryptAdapter.getItem/removeItem` 的参数语义改为 **adapter position（含首行）**，内部用 `headerOffset` 换算，调用方 `onSwiped` 不用改；
+  删除 3 个已无用字符串（`encrypt_btn_refresh` / `encrypt_btn_select_all` / `encrypt_btn_unselect_all`），计数行文案加"· 列表顶部下拉刷新"；
+  已真机实测：首行点击全选/取消全选 ✓、首行左滑不删 ✓、顶部下拉触发刷新 ✓、滚离顶部小幅下拉不触发 ✓、点列表项进查看器序号正确（2 / 8）✓；
+  空列表下拉未实测（结构上由"列表常驻可见 + 覆盖层空态提示"保证）。
+

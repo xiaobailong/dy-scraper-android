@@ -270,6 +270,11 @@ class WebViewManager(private val context: Context) {
     /** 详情 API 响应体（{"url":.., "body":..}），由影子请求填充 —— 这是拿到高清视频地址的关键 */
     val detailBodies = ConcurrentLinkedQueue<Map<String, String>>()
 
+    /** 详情 API 响应被过滤的次数（empty/too_short/html），用于判断是否触发了滑块验证 */
+    @Volatile
+    var detailFilteredCount = 0
+        private set
+
     // ── 页面加载状态 ──
     private var pageLoadDeferred: CompletableDeferred<Boolean>? = null
 
@@ -287,6 +292,7 @@ class WebViewManager(private val context: Context) {
         detailResponses.clear()
         detailBodies.clear()
         hookedApiUrls.clear()
+        detailFilteredCount = 0
 
         val pageLoadTimeout = AppConfig.getPageLoadTimeoutMs(context)
         val result = withContext(Dispatchers.Main) {
@@ -349,7 +355,9 @@ class WebViewManager(private val context: Context) {
     }
 
     /**
-     * 等待拦截到的详情 API 响应体（钩子回传；优先返回属于 [pageUrl] 的响应）
+     * 等待拦截到的详情 API 响应体（钩子回传；优先返回属于 [pageUrl] 的响应）。
+     * 当检测到详情 API 响应体被过滤（通常是滑块验证拦截）时，会自动延长等待时间，
+     * 给用户足够时间在 WebView 中完成验证。
      */
     suspend fun waitForDetailBodies(timeoutMs: Long = 8000): List<Map<String, String>> {
         val deadline = System.currentTimeMillis() + timeoutMs
@@ -358,6 +366,26 @@ class WebViewManager(private val context: Context) {
             if (all.isNotEmpty()) {
                 // 再多等 300ms，让同页面的其它响应（note/detail 两种）都进来
                 delay(300)
+                return detailBodies.toList()
+            }
+            // 详情 API 被请求了但响应体被过滤（empty/html），大概率触发了滑块验证
+            // 延长等待时间，让用户有机会在 WebView 中完成验证
+            if (detailFilteredCount > 0 && detailResponses.isNotEmpty()) {
+                val extraMs = 120_000L
+                val extendedDeadline = System.currentTimeMillis() + extraMs
+                Logger.log(
+                    "  [API] 检测到详情API响应被过滤(${detailFilteredCount}次)，疑似滑块验证，" +
+                            "延长等待 ${extraMs / 1000}s 等待用户完成验证",
+                    "warn"
+                )
+                while (System.currentTimeMillis() < extendedDeadline) {
+                    if (detailBodies.isNotEmpty()) {
+                        delay(300)
+                        return detailBodies.toList()
+                    }
+                    delay(500)
+                }
+                Logger.log("  [API] 延长等待 ${extraMs / 1000}s 后仍未捕获到详情响应体", "warn")
                 return detailBodies.toList()
             }
             delay(200)
@@ -568,12 +596,27 @@ class WebViewManager(private val context: Context) {
         }
 
         /**
+         * 详情 API 响应体被 JS 侧过滤时的诊断回调。
+         * 用于定位「Hook 旁听到 0 个详情 API 响应体」的根因：
+         * 是请求没发、响应为空、还是返回了 HTML 风控页。
+         */
+        @JavascriptInterface
+        fun onApiFiltered(url: String, reason: String) {
+            if (!PageHook.isDetailApiUrl(url)) return
+            detailFilteredCount++
+            Logger.log(
+                "  [Hook] 详情API响应被过滤(${detailFilteredCount}次): ${url.take(100)} | 原因: $reason",
+                "warn"
+            )
+        }
+
+        /**
          * 全量网络日志：页面所有 XHR/fetch 请求的响应都会回传到这里。
          * 用于分析哪些 API 返回了视频 URL、请求参数等。
          */
         @JavascriptInterface
         fun onNetworkLog(jsonStr: String) {
-            if (!AppConfig.isNetworkLogEnabled(context)) return
+            if (!Logger.isNetworkLogEnabled()) return
             try {
                 val entry = gson.fromJson(jsonStr, Map::class.java) ?: return
                 val url = (entry["url"] as? String) ?: return

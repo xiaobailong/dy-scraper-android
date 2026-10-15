@@ -5,10 +5,13 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,10 +21,12 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.dy.scraper.R
 import com.dy.scraper.crypto.CryptoManager
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.Logger
+import com.dy.scraper.util.StorageAccess
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -34,6 +39,9 @@ class EncryptFragment : Fragment() {
     private lateinit var tvFileCount: TextView
     private lateinit var llNoKeyHint: View
     private lateinit var llEmptyHint: View
+    private lateinit var swipeRefresh: SwipeRefreshLayout
+    private lateinit var llStorageHint: View
+    private lateinit var btnGrantStorage: Button
     private lateinit var adapter: EncryptAdapter
 
     private val mediaFileExtensions = setOf(
@@ -42,6 +50,11 @@ class EncryptFragment : Fragment() {
     )
 
     private val videoExtensions = setOf("mp4", "webm", "mov", "m4v", "flv", "3gp", "ts")
+
+    /** 已知的非媒体文件扩展名：确认与媒体无关，直接跳过（跳过时会记日志，便于排查） */
+    private val ignoredExtensions = setOf(
+        "json", "txt", "log", "nomedia", "tmp", "part", "crdownload", "db", "db-wal", "db-shm", "xml"
+    )
 
     private val keyImportLauncher = registerForActivityResult(
         ActivityResultContracts.GetContent()
@@ -82,6 +95,9 @@ class EncryptFragment : Fragment() {
         tvFileCount = view.findViewById(R.id.tvFileCount)
         llNoKeyHint = view.findViewById(R.id.llNoKeyHint)
         llEmptyHint = view.findViewById(R.id.llEmptyHint)
+        swipeRefresh = view.findViewById(R.id.swipeRefresh)
+        llStorageHint = view.findViewById(R.id.llStorageHint)
+        btnGrantStorage = view.findViewById(R.id.btnGrantStorage)
 
         adapter = EncryptAdapter(
             requireContext(),
@@ -102,6 +118,15 @@ class EncryptFragment : Fragment() {
         val swipeHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             0, ItemTouchHelper.LEFT
         ) {
+            override fun getMovementFlags(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder
+            ): Int {
+                // 首行“全选”行不允许左滑删除
+                if (viewHolder is EncryptAdapter.SelectAllViewHolder) return makeMovementFlags(0, 0)
+                return super.getMovementFlags(recyclerView, viewHolder)
+            }
+
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
@@ -120,21 +145,23 @@ class EncryptFragment : Fragment() {
                             if (item.file.exists()) {
                                 item.file.delete()
                             }
+                            Logger.d(
+                                "EncryptFragment: 左滑删除文件: ${item.file.absolutePath}，删除后存在=${item.file.exists()}"
+                            )
                         } catch (e: Exception) {
                             Logger.d("EncryptFragment: 删除文件失败: ${e.message}")
                         }
                     }
 
-                    adapter.removeItem(position)
                     Toast.makeText(
                         requireContext(),
                         "已删除: ${item.displayName}",
                         Toast.LENGTH_SHORT
                     ).show()
 
-                    if (adapter.getTotalCount() == 0) {
-                        refreshFileList()
-                    }
+                    // 删除后重新扫描整个文件系统，确保列表与实际文件同步
+                    // （用户可能从回收站恢复文件，需要能正确显示）
+                    refreshFileList()
                 }
             }
 
@@ -178,7 +205,17 @@ class EncryptFragment : Fragment() {
         view.findViewById<View>(R.id.btnDecrypt).setOnClickListener { decryptSelected() }
         view.findViewById<View>(R.id.btnExportKey).setOnClickListener { exportKey() }
         view.findViewById<View>(R.id.btnImportKey).setOnClickListener { importKey() }
+
+        // 列表顶部下拉刷新（原来的“刷新”按钮已移除）
+        swipeRefresh.setOnRefreshListener { refreshFileList() }
+        // 只有列表滚到顶部时才允许下拉（FrameLayout 自身不可滚动，必须显式判定）
+        swipeRefresh.setOnChildScrollUpCallback { _, _ -> rvMediaFiles.canScrollVertically(-1) }
         view.findViewById<View>(R.id.btnGenerateKey).setOnClickListener { generateKey() }
+
+        // Android 11+：Download 目录按创建者隔离，需要“所有文件访问”才能看到目录里的全部文件
+        btnGrantStorage.setOnClickListener {
+            StorageAccess.openAllFilesAccessSettings(requireContext())
+        }
     }
 
     override fun onResume() {
@@ -189,70 +226,263 @@ class EncryptFragment : Fragment() {
     private fun getKey(): SecretKey? = CryptoManager.getKey(requireContext())
 
     private fun refreshFileList() {
+        val hasAllFiles = StorageAccess.hasAllFilesAccess(requireContext())
+        llStorageHint.visibility = if (hasAllFiles) View.GONE else View.VISIBLE
+        if (!hasAllFiles) {
+            Logger.log(
+                "EncryptFragment: 未授予“所有文件访问”，Android 11+ 的 Download 目录按创建者隔离：" +
+                    "非本 App 创建的文件（其他 App / 电脑传入 / 从回收站恢复）不会出现在列表里",
+                "warn"
+            )
+        }
+
         val hasKey = CryptoManager.hasKey(requireContext())
 
         if (!hasKey) {
             llNoKeyHint.visibility = View.VISIBLE
             llEmptyHint.visibility = View.GONE
-            rvMediaFiles.visibility = View.GONE
+            swipeRefresh.visibility = View.GONE
             adapter.setItems(emptyList())
             tvFileCount.text = getString(R.string.encrypt_file_count, 0, 0)
+            swipeRefresh.isRefreshing = false
             return
         }
 
         llNoKeyHint.visibility = View.GONE
+        swipeRefresh.visibility = View.VISIBLE
 
         lifecycleScope.launch {
-            val items = withContext(Dispatchers.IO) {
-                scanMediaFiles()
-            }
+            try {
+                val items = withContext(Dispatchers.IO) {
+                    scanMediaFiles()
+                }
 
-            if (items.isEmpty()) {
-                llEmptyHint.visibility = View.VISIBLE
-                rvMediaFiles.visibility = View.GONE
-            } else {
-                llEmptyHint.visibility = View.GONE
-                rvMediaFiles.visibility = View.VISIBLE
-            }
+                // 列表常驻可见（空态提示只做覆盖层），这样列表为空时也能下拉刷新
+                llEmptyHint.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
 
-            adapter.setItems(items)
+                adapter.setItems(items)
+                // 与界面显示完全一致的清单（排查"手机里有、列表里没有"时以行为准）
+                Logger.d(
+                    "EncryptFragment: 列表已刷新，共 ${items.size} 项（图片 ${items.count { !it.isVideo }}，视频 ${items.count { it.isVideo }}）"
+                )
+                items.forEach {
+                    Logger.d("EncryptFragment: 列表项: ${it.displayName} (encrypted=${it.isEncrypted}, video=${it.isVideo}, size=${it.fileSize})")
+                }
+            } finally {
+                // 下拉刷新的转圈必须停掉（扫描抛异常时也一样）
+                swipeRefresh.isRefreshing = false
+            }
         }
     }
 
     private fun scanMediaFiles(): List<MediaFileItem> {
-        val key = getKey() ?: return emptyList()
+        val key = getKey()
+        if (key == null) {
+            Logger.d("EncryptFragment: scanMediaFiles 跳过，密钥为空")
+            return emptyList()
+        }
         val files = mutableListOf<MediaFileItem>()
         val dirs = listOf(AppConfig.downloadVideoDir, AppConfig.downloadImageDir)
 
-        for (dir in dirs) {
-            if (!dir.exists()) continue
+        Logger.d(
+            "EncryptFragment: 所有文件访问=${StorageAccess.hasAllFilesAccess(requireContext())}" +
+                "（false 时 Download 目录里非本 App 创建的文件不可见）"
+        )
 
-            dir.listFiles()?.forEach { file ->
-                if (!file.isFile) return@forEach
+        for (dir in dirs) {
+            if (!dir.exists()) {
+                Logger.d("EncryptFragment: 目录不存在，跳过: ${dir.absolutePath}")
+                continue
+            }
+
+            // 1. File.listFiles() 可能漏掉通过 MTP 传输的文件
+            val fsFiles = dir.listFiles()?.toList() ?: emptyList()
+
+            // 2. MediaStore 查询补充
+            val msFiles = queryMediaStoreByDir(dir)
+
+            // 3. Os.listdir() 底层系统调用补充（绕过 FUSE/Java File API 限制）
+            val osFiles = queryOsListdir(dir)
+
+            // 4. 合并去重（按路径去重）
+            val merged = (fsFiles + msFiles + osFiles).distinctBy { it.absolutePath }
+
+            Logger.d("EncryptFragment: 扫描目录 ${dir.absolutePath}，listFiles()=${fsFiles.size} 项，MediaStore=${msFiles.size} 项，Os.listdir=${osFiles.size} 项，合并=${merged.size} 项")
+            // 原始条目全量落盘：出现"手机里看得到、列表里没有"时，用这行对齐文件
+            Logger.d("EncryptFragment: 目录 ${dir.name} 原始条目(${merged.size}): ${merged.joinToString(" | ") { it.name }}")
+            merged.forEach { file ->
+                val ext = file.extension.lowercase()
+                if (!file.isFile) {
+                    Logger.log(
+                        "EncryptFragment: 跳过非文件项: ${file.name} (isFile=${file.isFile}, isDir=${file.isDirectory}, exists=${file.exists()})",
+                        "warn"
+                    )
+                    return@forEach
+                }
 
                 val isEncrypted = CryptoManager.isEncryptedFile(file)
                 val item = if (isEncrypted) {
                     val nameWithoutExt = file.name.removeSuffix(CryptoManager.getEncryptedExt())
                     val originalName = CryptoManager.decryptFileName(nameWithoutExt, key)
-                        ?: file.name
-                    val ext = if (originalName.contains(".")) {
-                        originalName.substringAfterLast(".")
+                    if (originalName == null) {
+                        Logger.log(
+                            "EncryptFragment: 加密文件名解密失败（密钥不匹配?），按原文件名列出: ${file.name}",
+                            "warn"
+                        )
+                    }
+                    val shownName = originalName ?: file.name
+                    val origExt = if (shownName.contains(".")) {
+                        shownName.substringAfterLast(".")
                     } else ""
-                    val isVideo = ext.lowercase() in videoExtensions
-                    MediaFileItem(file, originalName, true, file.length(), isVideo)
+                    val isVideo = origExt.lowercase() in videoExtensions
+                    Logger.d("EncryptFragment: 添加加密文件: ${file.name} -> $shownName (origExt=$origExt)")
+                    MediaFileItem(file, shownName, true, file.length(), isVideo)
                 } else {
-                    val ext = file.extension.lowercase()
-                    if (ext !in mediaFileExtensions) return@forEach
-                    val isVideo = ext in videoExtensions
-                    MediaFileItem(file, file.name, false, file.length(), isVideo)
+                    when {
+                        ext in ignoredExtensions -> {
+                            Logger.d("EncryptFragment: 跳过已知非媒体文件: ${file.name} (ext=$ext)")
+                            return@forEach
+                        }
+                        ext in mediaFileExtensions -> {
+                            val isVideo = ext in videoExtensions
+                            Logger.d("EncryptFragment: 添加媒体文件: ${file.name} (ext=$ext, isVideo=$isVideo)")
+                            MediaFileItem(file, file.name, false, file.length(), isVideo)
+                        }
+                        else -> {
+                            // 未知扩展名不再静默丢弃，否则会出现"手机里有、列表里没有"
+                            Logger.log(
+                                "EncryptFragment: 未知扩展名，仍列入列表: ${file.name} (ext='${ext}')",
+                                "warn"
+                            )
+                            MediaFileItem(file, file.name, false, file.length(), false)
+                        }
+                    }
                 }
 
                 files.add(item)
             }
         }
 
+        Logger.d("EncryptFragment: scanMediaFiles 完成，共 ${files.size} 个媒体文件（图片 ${files.count { !it.isVideo }}，视频 ${files.count { it.isVideo }}）")
         files.sortByDescending { it.file.lastModified() }
         return files
+    }
+
+    /**
+     * 通过 MediaStore 查询指定目录下的媒体文件。
+     * 补充 File.listFiles() 可能漏掉的通过 MTP 传输的文件。
+     */
+    private fun queryMediaStoreByDir(dir: File): List<File> {
+        val context = requireContext()
+        val result = mutableListOf<File>()
+        val isVideoDir = dir.absolutePath.endsWith("videos")
+        val collection = if (isVideoDir) {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+
+        val projection = arrayOf(
+            MediaStore.MediaColumns._ID,
+            MediaStore.MediaColumns.DISPLAY_NAME,
+            MediaStore.MediaColumns.SIZE
+        )
+
+        val selection: String
+        val selectionArgs: Array<String>
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            selection = "${MediaStore.MediaColumns.RELATIVE_PATH} = ?"
+            // RELATIVE_PATH 格式如 "Download/dy-scraper/images/"
+            val relativePath = dir.absolutePath
+                .removePrefix("/storage/emulated/0/")
+                .removePrefix("/storage/self/primary/") + "/"
+            selectionArgs = arrayOf(relativePath)
+        } else {
+            selection = "${MediaStore.MediaColumns.DATA} LIKE ?"
+            selectionArgs = arrayOf("${dir.absolutePath}/%")
+        }
+
+        var rowCount = 0
+        val noFileNames = mutableListOf<String>()
+        try {
+            context.contentResolver.query(
+                collection,
+                projection,
+                selection,
+                selectionArgs,
+                null
+            )?.use { cursor ->
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.SIZE)
+                while (cursor.moveToNext()) {
+                    val name = cursor.getString(nameCol) ?: continue
+                    if (name.isEmpty()) continue
+                    rowCount++
+                    val dbSize = cursor.getLong(sizeCol)
+                    val file = File(dir, name)
+                    val visible = file.exists() && file.isFile
+                    // 逐行落盘：可见性差异（Download 目录按创建者隔离）能一眼看出
+                    Logger.d(
+                        "EncryptFragment: 媒体库行: $name (dbSize=$dbSize, 可见=$visible" +
+                            (if (visible) ", 实际大小=${file.length()}" else "") + ")"
+                    )
+                    if (visible) {
+                        result.add(file)
+                    } else {
+                        noFileNames.add(name)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Logger.d("EncryptFragment: MediaStore 查询失败: ${e.message}")
+        }
+
+        Logger.d("EncryptFragment: MediaStore 查询目录 ${dir.absolutePath} 共 $rowCount 条记录，文件存在 ${result.size} 条")
+        if (noFileNames.isNotEmpty()) {
+            // 媒体库残留：文件已不在磁盘，但系统相册/图库仍会显示 → 表现为"手机里有、列表里没有"
+            Logger.log(
+                "EncryptFragment: MediaStore 残留 ${noFileNames.size} 条（文件已不存在，系统相册可能仍显示）: ${noFileNames.joinToString(", ")}",
+                "warn"
+            )
+        }
+        return result
+    }
+
+    /**
+     * 通过 Runtime.exec("ls") 列出目录下的文件。
+     * 绕过 Java File API / FUSE 层可能漏掉的通过 MTP 传输的文件。
+     */
+    private fun queryOsListdir(dir: File): List<File> {
+        val result = mutableListOf<File>()
+        try {
+            val process = Runtime.getRuntime().exec(arrayOf("ls", "-1", dir.absolutePath))
+            val names = process.inputStream.bufferedReader().useLines { it.toList() }
+            process.waitFor()
+            Logger.d("EncryptFragment: ls 原始输出 ${names.size} 行: ${names.joinToString(" | ") { it.trim() }}")
+            for (name in names) {
+                val trimmed = name.trim()
+                if (trimmed.isEmpty() || trimmed == "." || trimmed == "..") continue
+                val file = File(dir, trimmed)
+                if (file.isFile) {
+                    result.add(file)
+                } else {
+                    Logger.log(
+                        "EncryptFragment: ls 条目非文件，跳过: $trimmed (isDir=${file.isDirectory}, exists=${file.exists()})",
+                        "warn"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Logger.d("EncryptFragment: ls 命令失败: ${e.message}")
+        }
+        Logger.d("EncryptFragment: ls 查询目录 ${dir.absolutePath} 得到 ${result.size} 个文件")
+        return result
+    }
+
+    /** 统计两个目标目录下的真实文件总数（用于核对加密/解密前后是否丢文件） */
+    private fun countFilesInDirs(): Int {
+        return listOf(AppConfig.downloadVideoDir, AppConfig.downloadImageDir)
+            .sumOf { dir -> dir.listFiles()?.count { it.isFile } ?: 0 }
     }
 
     private fun encryptSelected() {
@@ -276,6 +506,11 @@ class EncryptFragment : Fragment() {
 
         Toast.makeText(requireContext(), R.string.encrypt_processing, Toast.LENGTH_SHORT).show()
 
+        val fileCountBefore = countFilesInDirs()
+        Logger.d(
+            "EncryptFragment: 开始加密 ${unencryptedItems.size} 个文件，目录内文件总数=$fileCountBefore，待加密: ${unencryptedItems.joinToString(", ") { it.displayName }}"
+        )
+
         lifecycleScope.launch {
             var successCount = 0
             var errorMsg: String? = null
@@ -293,6 +528,9 @@ class EncryptFragment : Fragment() {
                     }
                 }
 
+                Logger.d(
+                    "EncryptFragment: 加密结束，成功 $successCount/${unencryptedItems.size}，目录内文件总数 ${countFilesInDirs()}（加密前 $fileCountBefore）"
+                )
                 if (successCount > 0) {
                     Toast.makeText(
                         requireContext(),
@@ -340,6 +578,11 @@ class EncryptFragment : Fragment() {
 
         Toast.makeText(requireContext(), R.string.encrypt_processing, Toast.LENGTH_SHORT).show()
 
+        val fileCountBefore = countFilesInDirs()
+        Logger.d(
+            "EncryptFragment: 开始解密 ${encryptedItems.size} 个文件，目录内文件总数=$fileCountBefore，待解密: ${encryptedItems.joinToString(", ") { it.file.name }}"
+        )
+
         lifecycleScope.launch {
             var successCount = 0
             var errorMsg: String? = null
@@ -357,6 +600,9 @@ class EncryptFragment : Fragment() {
                     }
                 }
 
+                Logger.d(
+                    "EncryptFragment: 解密结束，成功 $successCount/${encryptedItems.size}，目录内文件总数 ${countFilesInDirs()}（解密前 $fileCountBefore）"
+                )
                 if (successCount > 0) {
                     Toast.makeText(
                         requireContext(),
@@ -419,11 +665,14 @@ class EncryptFragment : Fragment() {
     }
 
     private fun openMediaViewer(item: MediaFileItem) {
+        val allItems = adapter.getAllItems()
+        val currentIndex = allItems.indexOfFirst { it.file.absolutePath == item.file.absolutePath }
         val intent = Intent(requireContext(), MediaViewerActivity::class.java).apply {
-            putExtra(MediaViewerActivity.EXTRA_FILE_PATH, item.file.absolutePath)
-            putExtra(MediaViewerActivity.EXTRA_FILE_NAME, item.displayName)
-            putExtra(MediaViewerActivity.EXTRA_IS_VIDEO, item.isVideo)
-            putExtra(MediaViewerActivity.EXTRA_IS_ENCRYPTED, item.isEncrypted)
+            putExtra(MediaViewerActivity.EXTRA_FILE_PATHS, allItems.map { it.file.absolutePath }.toTypedArray())
+            putExtra(MediaViewerActivity.EXTRA_FILE_NAMES, allItems.map { it.displayName }.toTypedArray())
+            putExtra(MediaViewerActivity.EXTRA_IS_VIDEOS, BooleanArray(allItems.size) { allItems[it].isVideo })
+            putExtra(MediaViewerActivity.EXTRA_IS_ENCRYPTEDS, BooleanArray(allItems.size) { allItems[it].isEncrypted })
+            putExtra(MediaViewerActivity.EXTRA_CURRENT_INDEX, currentIndex.coerceAtLeast(0))
         }
         startActivity(intent)
     }

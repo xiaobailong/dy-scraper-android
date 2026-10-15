@@ -18,6 +18,8 @@
         android:layout_height="match_parent"
         android:visibility="gone"
         app:use_controller="true"
-        app:show_buffering="when_playing" />
+        app:show_buffering="when_playing"
+        app:controller_layout_id="@layout/exo_player_control_view_bottom"
+        app:resize_mode="fit" />
 
 </FrameLayout>
