@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$file = Join-Path $PSScriptRoot '..\app\build.gradle.kts'
+$file = Join-Path $PSScriptRoot '..\..\app\build.gradle.kts'
 
 if (-not (Test-Path $file)) {
     Write-Error "build.gradle.kts not found: $file"

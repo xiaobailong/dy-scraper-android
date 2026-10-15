@@ -1,6 +1,10 @@
 package com.dy.scraper.ui
 
 import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -8,8 +12,10 @@ import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.dy.scraper.R
@@ -80,11 +86,93 @@ class EncryptFragment : Fragment() {
         adapter = EncryptAdapter(
             requireContext(),
             keyProvider = { getKey() },
-            onItemClick = { item -> openMediaViewer(item) }
+            onItemClick = { item -> openMediaViewer(item) },
+            onSelectionChanged = { selectedCount ->
+                tvFileCount.text = getString(
+                    R.string.encrypt_file_count,
+                    adapter.getTotalCount(),
+                    selectedCount
+                )
+            }
         )
 
         rvMediaFiles.layoutManager = LinearLayoutManager(requireContext())
         rvMediaFiles.adapter = adapter
+
+        val swipeHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            0, ItemTouchHelper.LEFT
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean = false
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                val position = viewHolder.bindingAdapterPosition
+                if (position == RecyclerView.NO_POSITION) return
+
+                val item = adapter.getItem(position) ?: return
+
+                lifecycleScope.launch {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            if (item.file.exists()) {
+                                item.file.delete()
+                            }
+                        } catch (e: Exception) {
+                            Logger.d("EncryptFragment: 删除文件失败: ${e.message}")
+                        }
+                    }
+
+                    adapter.removeItem(position)
+                    Toast.makeText(
+                        requireContext(),
+                        "已删除: ${item.displayName}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    if (adapter.getTotalCount() == 0) {
+                        refreshFileList()
+                    }
+                }
+            }
+
+            override fun onChildDraw(
+                canvas: Canvas,
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                dX: Float,
+                dY: Float,
+                actionState: Int,
+                isCurrentlyActive: Boolean
+            ) {
+                val itemView = viewHolder.itemView
+                val background = ColorDrawable(Color.parseColor("#E53935"))
+                background.setBounds(
+                    itemView.right + dX.toInt(),
+                    itemView.top,
+                    itemView.right,
+                    itemView.bottom
+                )
+                background.draw(canvas)
+
+                val deleteText = "删除"
+                val paint = Paint().apply {
+                    color = Color.WHITE
+                    textSize = 48f
+                    isAntiAlias = true
+                    textAlign = Paint.Align.CENTER
+                }
+                val textY = itemView.top + (itemView.height / 2f) - 
+                    ((paint.descent() + paint.ascent()) / 2f)
+                val textX = itemView.right - 120f
+                canvas.drawText(deleteText, textX, textY, paint)
+
+                super.onChildDraw(canvas, recyclerView, viewHolder, dX, dY, actionState, isCurrentlyActive)
+            }
+        })
+        swipeHelper.attachToRecyclerView(rvMediaFiles)
 
         view.findViewById<View>(R.id.btnEncrypt).setOnClickListener { encryptSelected() }
         view.findViewById<View>(R.id.btnDecrypt).setOnClickListener { decryptSelected() }
@@ -128,7 +216,6 @@ class EncryptFragment : Fragment() {
             }
 
             adapter.setItems(items)
-            tvFileCount.text = getString(R.string.encrypt_file_count, items.size, 0)
         }
     }
 
@@ -145,7 +232,7 @@ class EncryptFragment : Fragment() {
 
                 val isEncrypted = CryptoManager.isEncryptedFile(file)
                 val item = if (isEncrypted) {
-                    val nameWithoutExt = file.nameWithoutExtension
+                    val nameWithoutExt = file.name.removeSuffix(CryptoManager.getEncryptedExt())
                     val originalName = CryptoManager.decryptFileName(nameWithoutExt, key)
                         ?: file.name
                     val ext = if (originalName.contains(".")) {

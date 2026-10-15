@@ -15,7 +15,6 @@ import com.dy.scraper.R
 import com.dy.scraper.crypto.CryptoManager
 import com.dy.scraper.util.Logger
 import java.io.File
-import java.io.FileOutputStream
 import javax.crypto.SecretKey
 import kotlin.concurrent.thread
 
@@ -36,7 +35,8 @@ data class MediaFileItem(
 class EncryptAdapter(
     private val context: Context,
     private val keyProvider: () -> SecretKey?,
-    private val onItemClick: (MediaFileItem) -> Unit
+    private val onItemClick: (MediaFileItem) -> Unit,
+    private val onSelectionChanged: (Int) -> Unit = {}
 ) : RecyclerView.Adapter<EncryptAdapter.ViewHolder>() {
 
     private val items = mutableListOf<MediaFileItem>()
@@ -49,6 +49,7 @@ class EncryptAdapter(
         selectedPositions.clear()
         thumbCache.clear()
         notifyDataSetChanged()
+        onSelectionChanged(0)
     }
 
     fun getSelectedItems(): List<MediaFileItem> {
@@ -57,9 +58,32 @@ class EncryptAdapter(
         }
     }
 
+    fun getSelectedCount(): Int = selectedPositions.size
+    fun getTotalCount(): Int = items.size
+
     fun clearSelection() {
         selectedPositions.clear()
         notifyDataSetChanged()
+        onSelectionChanged(0)
+    }
+
+    fun removeItem(position: Int): MediaFileItem? {
+        if (position !in items.indices) return null
+        val item = items.removeAt(position)
+        thumbCache.remove(item.file.absolutePath)
+
+        val adjusted = selectedPositions.map { if (it > position) it - 1 else it }.toMutableSet()
+        adjusted.remove(position)
+        selectedPositions.clear()
+        selectedPositions.addAll(adjusted)
+
+        notifyItemRemoved(position)
+        onSelectionChanged(selectedPositions.size)
+        return item
+    }
+
+    fun getItem(position: Int): MediaFileItem? {
+        return if (position in items.indices) items[position] else null
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -93,6 +117,7 @@ class EncryptAdapter(
             cbSelect.setOnCheckedChangeListener { _, isChecked ->
                 if (isChecked) selectedPositions.add(position)
                 else selectedPositions.remove(position)
+                onSelectionChanged(selectedPositions.size)
             }
 
             itemView.setOnClickListener {
@@ -105,8 +130,12 @@ class EncryptAdapter(
         private fun loadThumbnail(item: MediaFileItem, imageView: ImageView) {
             val cacheKey = item.file.absolutePath
 
-            thumbCache[cacheKey]?.let { bitmap ->
-                if (bitmap != null) imageView.setImageBitmap(bitmap)
+            thumbCache[cacheKey]?.let { cachedBitmap ->
+                imageView.setImageBitmap(cachedBitmap)
+                return
+            }
+
+            if (thumbCache.containsKey(cacheKey)) {
                 return
             }
 

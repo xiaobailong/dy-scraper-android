@@ -19,32 +19,47 @@ dy-scraper-android/
 │   │   ├── MainActivity.kt          # 主界面，模式切换 + 按钮控制
 │   │   ├── api/                     # API 收集器
 │   │   ├── core/                    # 核心逻辑 (UrlProcessor, Downloader, WebViewManager)
+│   │   ├── crypto/                  # 加密模块 (CryptoManager)
 │   │   ├── data/                    # Room 数据库 (entity, dao, AppDatabase)
 │   │   ├── entity/                  # 数据模型 (PageContext, ScrapeStats)
+│   │   ├── ui/                      # 界面组件 (Fragment, Adapter, Activity)
 │   │   ├── util/                    # 工具类 (Utils, YoudaoFetcher, Logger, AppConfig)
 │   │   └── worker/                  # WorkManager Worker (ScraperWorker)
 │   ├── src/test/java/com/dy/scraper/util/  # 单元测试
 │   └── src/main/res/               # 布局、字符串资源
-└── gradle/                          # Gradle wrapper 配置
+├── scripts/                         # 构建和管理脚本
+│   ├── build.bat                   # 一键构建 + 版本递增 + GitHub Release
+│   ├── clean.bat                   # 清理构建产物
+│   ├── gh-release.bat             # 独立 GitHub Release 发布
+│   ├── install.bat                # ADB 安装 APK 到设备
+│   └── tools/                     # 辅助 PowerShell 脚本
+│       ├── bump-version.ps1       # 版本号递增
+│       ├── sync-gradle-version.ps1 # 同步版本到 gradle
+│       ├── tee-log.ps1            # 日志双写（文件+控制台）
+│       └── hook-smoke-test.js     # Hook 冒烟测试
+├── tmp/                            # 临时文件目录（已加入 .gitignore）
+└── gradle/                         # Gradle wrapper 配置
 ```
 
 ## 关键约定
 
 ### 构建命令
-- **完整构建 + 测试**: 写 `.bat` 批处理文件，通过 `Start-Process` 异步启动，输出重定向到 `build_out.txt`
+- **完整构建**: 通过 `scripts\build.bat` 一键构建（双击运行），自动递增版本 + GitHub Release
+- **快速编译测试**: 写 `.bat` 批处理文件到 `tmp\` 目录，通过 `Start-Process` 异步启动，输出重定向到 `tmp\build_out.txt`
   ```bat
   set JAVA_HOME=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle
   set ANDROID_HOME=D:\Tools\DevTools\Android\Sdk
   set ANDROID_SDK_ROOT=D:\Tools\DevTools\Android\Sdk
   set "PATH=D:\Tools\DevTools\Java\JDK\jdk-17.0.10-oracle\bin;D:\Tools\DevTools\gradle\gradle-8.5\bin;%PATH%"
   cd /d "d:\WorkSpace\test\dy-scraper-android"
-  echo === %date% %time% === > %~dp0build_out.txt
-  call gradle assembleDebug testDebugUnitTest --rerun-tasks --console=plain >> %~dp0build_out.txt 2>&1
-  echo EXIT=%ERRORLEVEL% >> %~dp0build_out.txt
-  echo === %date% %time% === >> %~dp0build_out.txt
+  echo === %date% %time% === > tmp\build_out.txt
+  call gradle assembleDebug testDebugUnitTest --rerun-tasks --console=plain >> tmp\build_out.txt 2>&1
+  echo EXIT=%ERRORLEVEL% >> tmp\build_out.txt
+  echo === %date% %time% === >> tmp\build_out.txt
   ```
-- **启动方式**: `powershell -NoProfile -Command "Start-Process -FilePath 'd:\WorkSpace\test\dy-scraper-android\build_test.bat' -WorkingDirectory 'd:\WorkSpace\test\dy-scraper-android'; Write-Host 'Build launched'"`
-- **查看结果**: 读取 `build_out.txt` 和 `app/build/test-results/testDebugUnitTest/*.xml`
+- **启动方式**: `powershell -NoProfile -Command "Start-Process -FilePath 'd:\WorkSpace\test\dy-scraper-android\tmp\build_test.bat' -WorkingDirectory 'd:\WorkSpace\test\dy-scraper-android'; Write-Host 'Build launched'"`
+- **查看结果**: 读取 `tmp\build_out.txt` 和 `app/build/test-results/testDebugUnitTest/*.xml`
+- **ADB 安装**: 通过 `scripts\install.bat` 安装 APK 到已连接的 Android 设备
 
 ### 测试
 - 测试框架: JUnit4（`assertTrue`, `assertEquals` 等）
@@ -84,18 +99,21 @@ dy-scraper-android/
 - **禁止主动杀进程**：`taskkill /f /im cmd.exe` 会误伤用户自己的 cmd；基于 RunCommand 的杀进程方案（获取 PID → taskkill）同样会开新终端，越清越多。仅依赖 `& exit` 自关闭。
 
 ### 临时文件管理（强制）
-- 所有构建输出、日志写到项目根目录下的临时文件（如 `build_out.txt`, `build_test.bat` 等）
-- 每完成一个用户请求后，清理本次产生的临时批处理文件和日志
+- **所有临时文件都放在 `tmp\` 目录下**（构建输出、日志、临时批处理等），`tmp\` 已加入 `.gitignore`
+- 每完成一个用户请求后，清理 `tmp\` 目录下本次产生的临时文件
+- 构建命令输出的 bat 文件路径：`tmp\build_test.bat`，输出文件：`tmp\build_out.txt`
 
 ### 命令等待
 - 在终端执行命令后必须等待命令执行完成，不要命令一发出就立刻查看输出并断定执行失败
-- 对于 Gradle 构建类长时间命令，轮询 `build_out.txt` 直到出现 `BUILD SUCCESSFUL` 或 `BUILD FAILED`
+- 对于 Gradle 构建类长时间命令，轮询 `tmp\build_out.txt` 直到出现 `BUILD SUCCESSFUL` 或 `BUILD FAILED`
 
 ## 常用操作
-- **运行所有测试**: 通过 `build_test.bat` + `Start-Process` 方式执行
+- **运行所有测试**: 通过 `tmp\build_test.bat` + `Start-Process` 方式执行
 - **仅编译**: 同上，gradle 参数改为 `assembleDebug`
-- **检查编译错误**: 查看 `build_out.txt` 中的 `FAILED` 和 `e: file:///...` 行
-- **清理构建缓存**: 删除 `.gradle/8.5/` 目录和 `app/build/` 目录
+- **检查编译错误**: 查看 `tmp\build_out.txt` 中的 `FAILED` 和 `e: file:///...` 行
+- **清理构建缓存**: 运行 `scripts\clean.bat`，或手动删除 `.gradle/8.5/` 目录和 `app/build/` 目录
+- **ADB 安装到设备**: 运行 `scripts\install.bat`
+- **完整发布**: 运行 `scripts\build.bat` 一键构建 + 发布
 
 ## 项目记忆
 - Git 仓库位于 `d:\WorkSpace\test\dy-scraper-android`，所有代码变更通过 git 管理

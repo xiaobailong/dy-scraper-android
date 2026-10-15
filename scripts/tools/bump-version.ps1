@@ -5,7 +5,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $newName = "1.0.$NewCode"
-$file = Join-Path $PSScriptRoot '..\version.properties'
+$file = Join-Path $PSScriptRoot '..\..\version.properties'
 
 if (-not (Test-Path $file)) {
     Write-Error "version.properties not found: $file"

@@ -30,9 +30,13 @@ if ([string]::IsNullOrWhiteSpace($Script)) {
 $argsPart = ''
 if (-not [string]::IsNullOrWhiteSpace($ScriptArgs)) { $argsPart = ' ' + $ScriptArgs.Trim() }
 
+# 计算项目根目录（bat 所在目录的上一级）
+$projectRoot = Split-Path -Parent (Split-Path -Parent $Script)
+
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $env:ComSpec
 $psi.Arguments = '/d /s /c ""' + $Script + '"' + $argsPart + ' 2>&1"'
+$psi.WorkingDirectory = $projectRoot
 $psi.UseShellExecute = $false
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $false

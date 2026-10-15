@@ -7,9 +7,10 @@ goto :skip_log
 
 :init_log
 set "_DS_LOG_ACTIVE=1"
-if not exist "build\logs" mkdir "build\logs"
+set "_DS_ROOT=%~dp0.."
+if not exist "%_DS_ROOT%\build\logs" mkdir "%_DS_ROOT%\build\logs"
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"') do set "_DS_LOG_TS=%%i"
-set "_DS_LOGFILE=build\logs\build_%_DS_LOG_TS%.log"
+set "_DS_LOGFILE=%_DS_ROOT%\build\logs\build_%_DS_LOG_TS%.log"
 set "_DS_TEE=%~dp0tools\tee-log.ps1"
 set "_DS_SELF=%~f0"
 set "_DS_ARGS=%*"
