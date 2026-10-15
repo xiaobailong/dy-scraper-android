@@ -86,6 +86,15 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.webkit:webkit:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+
+    // Material Design (TabLayout)
+    implementation("com.google.android.material:material:1.11.0")
+
+    // ExoPlayer (video playback)
+    implementation("androidx.media3:media3-exoplayer:1.2.1")
+    implementation("androidx.media3:media3-ui:1.2.1")
 
     // Room (SQLite ORM)
     implementation("androidx.room:room-runtime:2.6.1")
