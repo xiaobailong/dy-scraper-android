@@ -15,13 +15,7 @@
 
 ## ADR-006 详情响应体：document-start 钩子旁听（取代「重放」） — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：用 `WebViewCompat.addDocumentStartJavaScript` 注入钩子旁听 XHR/fetch 的详情响应体（+ setter 快照 SSR 变量），`ENABLE_REPLAY_FALLBACK=false`；不支持该特性时退化 `onPageStarted` 注入（`window.__dyHookV1` 幂等）。
 
-## ADR-007 图片去重改用 DCT pHash（阈值 5）
-- 日期: 2026-09-29 | 状态: 已采纳
-- 背景: 旧实现用 aHash（8x8 均值哈希）+ 阈值 4 冒充 pHash，真机上一个 6 图作品被删到只剩 2 张（`PIT-009`）。
-- 决策: 新增纯 Kotlin `util/PHash.kt`（32x32 灰度 → 二维 DCT 取 8x8 低频 → 与中位数比较），`ImageDedupChecker` 改调它，Hamming 阈值 5（对齐 Python `imagehash.phash` 与 `hamming_threshold=5`）。
-- 备选与为何不选: ① 保留 aHash 只是把阈值降到 0~2 —— 安全区间几乎失去去重能力；② 引入第三方 imagehash 库 —— Android 生态没有等价轻量库，且要新增离线依赖。
-- 影响与约束: 哈希只做即时比较、不落库 → 无需数据迁移；采样从 8x8 提升到 32x32，单张图开销仍很小；
-  `checkAndDedup` 仍会对目录内每张已有图重算 pHash（性能项，未改，见 ISSUE 待办）。
+## ADR-007 图片去重改用 DCT pHash（阈值 5） — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：新增纯 Kotlin `util/PHash.kt`（32x32 灰度→二维 DCT 取 8x8 低频→比中位数）替代 aHash，Hamming 阈值 5，对齐 Python `imagehash.phash`。
 
 ## ADR-008 加密页：刷新改为「列表顶部下拉」，全选移到「列表首行」
 - 日期: 2026-10-15 | 状态: 已采纳
@@ -59,14 +53,7 @@
   共 131 个单测全绿；真机实测显示 `我的_860连体裤穿…_20261015_122204_4.webp` + `20261015_122204_4.webp · 242 KB · 图片`。
 
 
-## ADR-010 预览页去掉「×」，改用系统返回
-- 日期: 2026-10-15 | 状态: 已采纳
-- 背景: 预览页（`MediaViewerActivity`）右上角常驻「×」关闭按钮，与系统返回重复且遮挡画面。
-- 决策: 删除 `btnClose`（布局 + 监听 + 无用字符串 `media_viewer_close`）；退出只走系统返回键/手势；
-  同时把资源清理收到 `onDestroy()`：适配器用 `boundHolders` 记录已绑定页，统一 `releasePlayer()`（释放 ExoPlayer + 删临时解密文件），不依赖 RecyclerView 回收时机。
-- 备选与为何不选: 保留「×」改半透明/几秒后自动隐藏 —— 仍与系统返回重复，且要多一套显隐逻辑。
-- 影响与约束: `onDestroy` 里用 `::viewPager.isInitialized` 防护（无文件早退路径不会崩）；真机实测：预览页 dump 无 `btnClose`、序号 `2 / 8` 正常，手势返回后停在本页列表（`mResumedActivity=MainActivity`）且日志出现 `releasePlayer 被调用`。
-  提醒：用 `adb shell input keyevent 4` 验证时，合成事件会被二次投递把 MainActivity 也 finish（App 退到后台的假象），真实手势/按键无此现象。
+## ADR-010 预览页去掉「×」，改用系统返回 — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：删 `btnClose`，退出只走系统返回；ExoPlayer 释放与临时解密文件清理统一收到 `MediaViewerActivity.onDestroy()`。
 
 ## ADR-011 加密页计数并入底部状态栏（白底略带透明）
 - 日期: 2026-10-15 | 状态: 已采纳
@@ -91,6 +78,18 @@
 - 影响与约束: 抓取整体变慢（每页多 2.5-3.75s、每批次多 0.8-1.2s），要快就在设置里把间隔/抖动调小或设 0；
   已存过设置的用户保留旧值（并发仍是 5/8，需手动改）；验证检测是启发式，抖音改 DOM/文案后要更新 `RISK_URL_KEYWORDS` / `VERIFY_PROBE_JS`；
   人工等待上限 `AppConfig.DEFAULT_RISK_WAIT_TIMEOUT_MS`(5 分钟)。抓取逻辑不做真机自测（项目红线），计算部分由 `PacingTest`（9 例）覆盖。
+
+## ADR-013 全局配色：纯白（顶栏 / Tab 栏 / 底部栏 / 窗口背景 / 系统状态栏）
+- 日期: 2026-10-15 | 状态: 已采纳（取代同日的「白色略带灰」尝试）
+- 背景: 先把顶栏/Tab 改成"白色略带灰"（#F2F2F2），真机一看被否（用户：白里带灰有点难看），要求全局纯白；
+  同时顶部系统状态栏一直是 App 主色紫 —— 主题里 `colorPrimaryDark=#3700B3`，AppCompat 在 API 21+ 默认把它当 `android:statusBarColor`，不显式覆盖就永远是紫的。
+- 决策: `colors.xml` 里 `background`(#F5F5F5→#FFFFFF)、`top_bar_background`(#F2F2F2→#FFFFFF)、`bottom_bar_background`(#E6FFFFFF→#FFFFFF) 全部纯白；
+  `themes.xml` 显式加 `android:statusBarColor=@color/top_bar_background` + `android:windowLightStatusBar=true`（图标转深色；minSdk 26，直接放 `values/` 即可）。
+- 理由: 用户要"全局白"；状态栏颜色由主题决定，改 `statusBarColor` 才治本，不必在 Activity 里写 `window.statusBarColor`。
+- 备选与为何不选: ① 保留 #F2F2F2（已被用户否掉）；② 只改状态栏不动背景（白/灰不统一）；③ 代码里设状态栏颜色（多一份运行时逻辑，主题能表达就别写代码）。
+- 影响与约束: 紫色退化为强调色（Tab 指示条 `tabIndicatorColor=@color/primary`、按钮）；底栏从 90% 半透明白变纯白（它在 LinearLayout 里不覆盖内容，无副作用）；
+  顶栏/底栏靠 Toolbar 的 4dp elevation 与 1dp `divider` 区分，没有灰色底也看得清。
+
 
 
 

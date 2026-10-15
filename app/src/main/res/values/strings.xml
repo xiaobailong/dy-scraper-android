@@ -121,6 +121,8 @@
     <string name="encrypt_no_selection">请先选择文件</string>
     <string name="encrypt_no_key_error">请先生成或导入密钥</string>
     <string name="encrypt_success">已加密 %1$d 个文件</string>
+    <string name="encrypt_leftover_hidden">%1$d 个源文件被系统回收站拦住，App 删不掉，已在列表隐藏（可在系统文件管理器里删除）</string>
+    <string name="decrypt_leftover_hidden">%1$d 个加密源文件被系统拦住，App 删不掉，已在列表隐藏（可在系统文件管理器里删除）</string>
     <string name="encrypt_failed">加密失败: %1$s</string>
     <string name="decrypt_success">已解密 %1$d 个文件</string>
     <string name="decrypt_failed">解密失败: %1$s</string>

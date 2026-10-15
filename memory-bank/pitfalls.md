@@ -91,4 +91,19 @@
 - 反例: `adb pull x tmp\y 2>$null | Out-Null; <解析>` —— 解析永远跑不到；把关键中间文件当成「下一条命令一定能读到」。
 - 自检: 同一条命令里 `cmd /c "... pull ..."` 之后紧跟的语句有输出（如 `if (Test-Path ...){...}` 打印尺寸）。
 
+## PIT-013 华为 EMUI「回收站」拦 App 删除：`File.delete()` 有时完全无效（加密后明文与密文共存 → 列表翻倍）
+- 触发条件: EMUI（LIO-AN00m / SDK 31）对 `Download/dy-scraper/{images,videos}/` 里的文件调 `File.delete()`（加密后删明文、或解密后删 `.enc`）。
+- 现象: 同一目录、同一批文件里两种结果混着出现 —— ① 文件被改名成隐藏的 `.<原名>.hwbk`（原路径消失，无害，只是占空间）；
+  ② **完全不生效**：文件仍留在原路径（真机 20:22：8 个明文 delete 后全在，明文 + 新 `enc_*` 共存 → 加密页列表 8 → 16；同一时刻的 8 个 `.enc` 却删掉了）。
+  `delete()` 返回值以前没人检查，两种结果都静默。
+- 清理现场（2026-10-15 实测）: **可见的明文残留 adb shell `rm` 能删掉**（同一个文件 App 删不掉、adb 能删 —— 拦截发生在 App 的 unlink 路径上）；
+  而回收站里的 `.<名>.hwbk` 连 adb 都动不了：`rm -f` / `mv` 都返回 `No such file or directory`（被系统回收服务守着），
+  只能走系统「文件管理 → 回收站 → 彻底删除」，或等它自己过期。
+- 正确做法: 别把 `delete()` 当可靠删除 —— 先 `file.renameTo(File(dir, ".${file.name}.dyresidue"))`（rename 只改目录项，不触发回收站）把文件移出可见路径，
+  再尽力 `delete()` 隐藏残留；随后**必须核对** `file.exists()`，还在就调用方登记隐藏（本项目 `crypto/CryptoManager.removeSourceFile()` + `crypto/SupersededSourceRegistry`）；
+  扫描时再按「反解加密文件名 + 密文 = 明文 + 28B」识别历史残留（明文与密文共存）只列加密版，这样老残留也不会翻倍。
+- 反例: 只 try/catch 不看返回值就当"源文件已删"；把翻倍当成"多复制了一份 / Adapter 插了两遍 / 扫描重复计数"。
+- 自检: 加密后 `cmd /c "\"D:\Tools\DevTools\Android\Sdk\platform-tools\adb.exe\" shell ls -la /storage/emulated/0/Download/dy-scraper/images/"` 里不应再有明文原名文件；
+  日志出现 `CryptoManager: 源文件已移出可见路径` 或 `源文件已删除`，且 `加密结束…源文件未移走 0 个`。
+
 ## PIT-011 Windows 上 adb devices 恒为空（华为 ADB 接口被 winusb.inf 抢装、缺 DeviceInterfaceGUIDs） — 已归档（2026-10-15）：见 archive/pitfalls-archive.md；要点 + 自检：给该接口的 Device Parameters 补 DeviceInterfaceGUIDs={F72FE0D4-CBCB-407d-8814-9ED673D0DD6B} 后 pnputil /restart-device（或设备管理器改选 ADB Device），adb devices 非空即好。

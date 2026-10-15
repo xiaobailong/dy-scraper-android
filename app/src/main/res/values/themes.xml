@@ -5,6 +5,9 @@
         <item name="colorPrimaryDark">@color/primary_variant</item>
         <item name="colorAccent">@color/accent</item>
         <item name="android:windowBackground">@color/background</item>
+        <!-- 系统状态栏（顶部通知栏那条）：跟随顶栏用纯白，图标转深色（minSdk 26，无需分目录） -->
+        <item name="android:statusBarColor">@color/top_bar_background</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
     <style name="AppInfoLabel">

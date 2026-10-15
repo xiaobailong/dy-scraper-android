@@ -75,3 +75,22 @@
   ③GeckoView（Mozilla 引擎，Android 兼容性不及 Chromium，社区资源少）。
 - 影响 / 约束: 需要 Android 5.0+ (API 21)；WebView 需要系统 WebView 组件支持（或内置 Chromium WebView）；
   长时间运行的抓取任务需前台 Service + WakeLock 防止被系统回收。
+## ADR-010 预览页去掉「×」，改用系统返回
+- 归档日期: 2026-10-15（主文件 decisions.md 超 12KB 上限，按 WRITING.md §3 归档）
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 预览页（`MediaViewerActivity`）右上角常驻「×」关闭按钮，与系统返回重复且遮挡画面。
+- 决策: 删除 `btnClose`（布局 + 监听 + 无用字符串 `media_viewer_close`）；退出只走系统返回键/手势；
+  同时把资源清理收到 `onDestroy()`：适配器用 `boundHolders` 记录已绑定页，统一 `releasePlayer()`（释放 ExoPlayer + 删临时解密文件），不依赖 RecyclerView 回收时机。
+- 备选与为何不选: 保留「×」改半透明/几秒后自动隐藏 —— 仍与系统返回重复，且要多一套显隐逻辑。
+- 影响与约束: `onDestroy` 里用 `::viewPager.isInitialized` 防护（无文件早退路径不会崩）；真机实测：预览页 dump 无 `btnClose`、序号 `2 / 8` 正常，手势返回后停在本页列表（`mResumedActivity=MainActivity`）且日志出现 `releasePlayer 被调用`。
+  提醒：用 `adb shell input keyevent 4` 验证时，合成事件会被二次投递把 MainActivity 也 finish（App 退到后台的假象），真实手势/按键无此现象。
+
+## ADR-007 图片去重改用 DCT pHash（阈值 5）
+- 归档日期: 2026-10-15（主文件 decisions.md 超 12KB 上限，按 WRITING.md §3 归档）
+- 日期: 2026-09-29 | 状态: 已采纳
+- 背景: 旧实现用 aHash（8x8 均值哈希）+ 阈值 4 冒充 pHash，真机上一个 6 图作品被删到只剩 2 张（`PIT-009`）。
+- 决策: 新增纯 Kotlin `util/PHash.kt`（32x32 灰度 → 二维 DCT 取 8x8 低频 → 与中位数比较），`ImageDedupChecker` 改调它，Hamming 阈值 5（对齐 Python `imagehash.phash` 与 `hamming_threshold=5`）。
+- 备选与为何不选: ① 保留 aHash 只是把阈值降到 0~2 —— 安全区间几乎失去去重能力；② 引入第三方 imagehash 库 —— Android 生态没有等价轻量库，且要新增离线依赖。
+- 影响与约束: 哈希只做即时比较、不落库 → 无需数据迁移；采样从 8x8 提升到 32x32，单张图开销仍很小；
+  `checkAndDedup` 仍会对目录内每张已有图重算 pHash（性能项，未改，见 ISSUE 待办）。
+

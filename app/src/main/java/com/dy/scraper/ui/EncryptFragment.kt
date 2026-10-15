@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.dy.scraper.R
 import com.dy.scraper.crypto.CryptoManager
+import com.dy.scraper.crypto.SupersededSourceRegistry
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.Logger
 import com.dy.scraper.util.StorageAccess
@@ -138,22 +139,29 @@ class EncryptFragment : Fragment() {
                 val item = adapter.getItem(position) ?: return
 
                 lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
+                    val stillExists = withContext(Dispatchers.IO) {
                         try {
                             if (item.file.exists()) {
-                                item.file.delete()
+                                // 走 CryptoManager：先 rename 到隐藏名再删（EMUI 的回收站会拦 delete()）
+                                CryptoManager.removeSourceFile(item.file)
                             }
-                            Logger.d(
-                                "EncryptFragment: 左滑删除文件: ${item.file.absolutePath}，删除后存在=${item.file.exists()}"
-                            )
                         } catch (e: Exception) {
                             Logger.d("EncryptFragment: 删除文件失败: ${e.message}")
                         }
+                        val exists = item.file.exists()
+                        Logger.d(
+                            "EncryptFragment: 左滑删除文件: ${item.file.absolutePath}，删除后存在=$exists"
+                        )
+                        exists
                     }
 
                     Toast.makeText(
                         requireContext(),
-                        "已删除: ${item.displayName}",
+                        if (stillExists) {
+                            "未删除: ${item.displayName}（被系统回收站拦住，请在系统文件管理器里删除）"
+                        } else {
+                            "已删除: ${item.displayName}"
+                        },
                         Toast.LENGTH_SHORT
                     ).show()
 
@@ -229,7 +237,7 @@ class EncryptFragment : Fragment() {
     private fun getKey(): SecretKey? = CryptoManager.getKey(requireContext())
 
     private fun refreshFileList() {
-        val hasAllFiles = StorageAccess.hasAllFilesAccess(requireContext())
+        val hasAllFiles = StorageAccess.hasAllFilesAccess()
         llStorageHint.visibility = if (hasAllFiles) View.GONE else View.VISIBLE
         if (!hasAllFiles) {
             Logger.log(
@@ -287,8 +295,12 @@ class EncryptFragment : Fragment() {
         val files = mutableListOf<MediaFileItem>()
         val dirs = listOf(AppConfig.downloadVideoDir, AppConfig.downloadImageDir)
 
+        // 先清掉已经消失的残留登记，再取一次快照（扫描时逐个文件判断，不重复读 SharedPreferences）
+        SupersededSourceRegistry.prune(requireContext())
+        val superseded = SupersededSourceRegistry.snapshot(requireContext())
+
         Logger.d(
-            "EncryptFragment: 所有文件访问=${StorageAccess.hasAllFilesAccess(requireContext())}" +
+            "EncryptFragment: 所有文件访问=${StorageAccess.hasAllFilesAccess()}" +
                 "（false 时 Download 目录里非本 App 创建的文件不可见）"
         )
 
@@ -313,6 +325,13 @@ class EncryptFragment : Fragment() {
             Logger.d("EncryptFragment: 扫描目录 ${dir.absolutePath}，listFiles()=${fsFiles.size} 项，MediaStore=${msFiles.size} 项，Os.listdir=${osFiles.size} 项，合并=${merged.size} 项")
             // 原始条目全量落盘：出现"手机里看得到、列表里没有"时，用这行对齐文件
             Logger.d("EncryptFragment: 目录 ${dir.name} 原始条目(${merged.size}): ${merged.joinToString(" | ") { it.name }}")
+
+            // 历史残留：同一份文件既有明文又有密文（旧版本加密时源文件被系统拦住没删掉）→ 只列加密版，
+            // 否则列表里一份文件出现两条（真机 2026-10-15 20:22：8 → 16）
+            val plaintextTwins = findPlaintextTwins(merged, key)
+            plaintextTwins.forEach {
+                Logger.log("EncryptFragment: 明文与密文共存（同一份文件），列表只显示加密版: $it", "warn")
+            }
             merged.forEach { file ->
                 val ext = file.extension.lowercase()
                 if (!file.isFile) {
@@ -327,6 +346,21 @@ class EncryptFragment : Fragment() {
                 // 内容仍在但扩展名未知；若列进列表，加密后会出现「文件数翻倍」
                 if (file.name.startsWith(".")) {
                     Logger.d("EncryptFragment: 跳过隐藏/系统残留文件: ${file.name}")
+                    return@forEach
+                }
+
+                // 加/解密后系统不让 App 移走的源文件（登记在案）：列表里不再显示，
+                // 否则明文与密文共存 → 「文件数翻倍」（真机 2026-10-15 20:22：8 → 16）
+                if (SupersededSourceRegistry.keyOf(file) in superseded) {
+                    Logger.log(
+                        "EncryptFragment: 跳过加/解密残留的源文件（系统拦住了删除，已隐藏）: ${file.name}",
+                        "warn"
+                    )
+                    return@forEach
+                }
+
+                // 与某个 .enc 是同一份文件的明文（历史上没被移走）：只显示加密版
+                if (file.absolutePath in plaintextTwins) {
                     return@forEach
                 }
 
@@ -489,11 +523,38 @@ class EncryptFragment : Fragment() {
         return result
     }
 
-    /** 统计两个目标目录下的真实文件总数（用于核对加密/解密前后是否丢文件） */
-    /** 目录内「可见文件」数（排除 . 开头的系统残留，口径与列表一致，仅用于日志对比） */
+    /**
+     * 找出「明文与 `.enc` 密文共存」的同一份文件（历史上加密时源文件没被系统移走）。
+     * 双重校验，两关都过才算：① 加密文件名能用当前密钥反解出明文名；
+     * ② 密文大小 = 明文 + 28B（`CryptoManager.OVERHEAD_BYTES`，GCM 的 IV 12 + tag 16）。
+     * 命中后列表只显示加密版，避免同一份文件在列表里出现两条（「文件数翻倍」）。
+     */
+    private fun findPlaintextTwins(files: List<File>, key: SecretKey): Set<String> {
+        val twins = mutableSetOf<String>()
+        files.forEach { enc ->
+            if (!enc.isFile || !CryptoManager.isEncryptedFile(enc)) return@forEach
+            val encName = enc.name.removeSuffix(CryptoManager.getEncryptedExt())
+            val originalName = CryptoManager.decryptFileName(encName, key) ?: return@forEach
+            val plain = File(enc.parentFile, originalName)
+            if (plain.isFile && plain.length() + CryptoManager.OVERHEAD_BYTES == enc.length()) {
+                twins.add(plain.absolutePath)
+            }
+        }
+        return twins
+    }
+
+    /** 目录内「可见文件」数（排除 . 开头的系统残留、已登记的加/解密残留、明文/密文共存的重复项，口径与列表一致） */
     private fun countFilesInDirs(): Int {
+        val superseded = SupersededSourceRegistry.snapshot(requireContext())
+        val key = getKey() ?: return 0
         return listOf(AppConfig.downloadVideoDir, AppConfig.downloadImageDir)
-            .sumOf { dir -> dir.listFiles()?.count { it.isFile && !it.name.startsWith(".") } ?: 0 }
+            .sumOf { dir ->
+                val visible = dir.listFiles()?.filter { it.isFile && !it.name.startsWith(".") } ?: emptyList()
+                val twins = findPlaintextTwins(visible, key)
+                visible.count {
+                    SupersededSourceRegistry.keyOf(it) !in superseded && it.absolutePath !in twins
+                }
+            }
     }
 
     private fun encryptSelected() {
@@ -525,6 +586,7 @@ class EncryptFragment : Fragment() {
         lifecycleScope.launch {
             var successCount = 0
             var errorMsg: String? = null
+            val leftoverFiles = mutableListOf<File>()
 
             try {
                 withContext(Dispatchers.IO) {
@@ -532,6 +594,12 @@ class EncryptFragment : Fragment() {
                         try {
                             CryptoManager.encryptFileInPlace(item.file, key)
                             successCount++
+                            // 源文件是否真的移走了？EMUI 的「回收站」连 rename 都可能拦，
+                            // 拦住了就登记（列表里隐藏它），否则明文和密文共存 → 文件数翻倍
+                            if (item.file.exists()) {
+                                leftoverFiles.add(item.file)
+                                SupersededSourceRegistry.record(requireContext(), item.file)
+                            }
                         } catch (e: Exception) {
                             Logger.d("EncryptFragment: 加密失败 ${item.file.name}: ${e.message}")
                             errorMsg = e.message
@@ -540,8 +608,15 @@ class EncryptFragment : Fragment() {
                 }
 
                 Logger.d(
-                    "EncryptFragment: 加密结束，成功 $successCount/${unencryptedItems.size}，目录内文件总数 ${countFilesInDirs()}（加密前 $fileCountBefore）"
+                    "EncryptFragment: 加密结束，成功 $successCount/${unencryptedItems.size}，目录内文件总数 ${countFilesInDirs()}（加密前 $fileCountBefore），源文件未移走 ${leftoverFiles.size} 个"
                 )
+                if (leftoverFiles.isNotEmpty()) {
+                    Toast.makeText(
+                        requireContext(),
+                        getString(R.string.encrypt_leftover_hidden, leftoverFiles.size),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
                 if (successCount > 0) {
                     Toast.makeText(
                         requireContext(),
@@ -597,6 +672,7 @@ class EncryptFragment : Fragment() {
         lifecycleScope.launch {
             var successCount = 0
             var errorMsg: String? = null
+            val leftoverFiles = mutableListOf<File>()
 
             try {
                 withContext(Dispatchers.IO) {
@@ -604,6 +680,11 @@ class EncryptFragment : Fragment() {
                         try {
                             CryptoManager.decryptFileInPlace(item.file, key)
                             successCount++
+                            // 加密源文件没被移走（系统拦住）时同样登记隐藏，避免列表里多出一份
+                            if (item.file.exists()) {
+                                leftoverFiles.add(item.file)
+                                SupersededSourceRegistry.record(requireContext(), item.file)
+                            }
                         } catch (e: Exception) {
                             Logger.d("EncryptFragment: 解密失败 ${item.file.name}: ${e.message}")
                             errorMsg = e.message
@@ -612,8 +693,15 @@ class EncryptFragment : Fragment() {
                 }
 
                 Logger.d(
-                    "EncryptFragment: 解密结束，成功 $successCount/${encryptedItems.size}，目录内文件总数 ${countFilesInDirs()}（解密前 $fileCountBefore）"
+                    "EncryptFragment: 解密结束，成功 $successCount/${encryptedItems.size}，目录内文件总数 ${countFilesInDirs()}（解密前 $fileCountBefore），源文件未移走 ${leftoverFiles.size} 个"
                 )
+                if (leftoverFiles.isNotEmpty()) {
+                    Toast.makeText(
+                        requireContext(),
+                        getString(R.string.decrypt_leftover_hidden, leftoverFiles.size),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
                 if (successCount > 0) {
                     Toast.makeText(
                         requireContext(),

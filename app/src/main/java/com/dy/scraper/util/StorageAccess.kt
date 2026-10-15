@@ -19,8 +19,11 @@ import android.provider.Settings
  */
 object StorageAccess {
 
-    /** 是否已具备“所有文件访问”；API 30 以下恒为 true（旧版权限模型没有该隔离） */
-    fun hasAllFilesAccess(context: Context): Boolean {
+    /**
+     * 是否已具备“所有文件访问”；API 30 以下恒为 true（旧版权限模型没有该隔离）。
+     * 不需要 Context：`isExternalStorageManager()` 查的就是本 App 自己的授权状态。
+     */
+    fun hasAllFilesAccess(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return true
         return try {
             Environment.isExternalStorageManager()

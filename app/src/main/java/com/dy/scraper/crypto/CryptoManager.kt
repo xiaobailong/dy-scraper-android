@@ -27,6 +27,9 @@ object CryptoManager {
 
     private const val ENCRYPTED_EXT = ".enc"
 
+    /** 密文比明文多出的字节数：GCM 的 12 字节 IV + 16 字节 tag（用来识别「明文与密文共存」的历史残留） */
+    val OVERHEAD_BYTES: Long = (GCM_IV_LENGTH + GCM_TAG_LENGTH / 8).toLong()
+
     fun isEncryptedFile(file: File): Boolean {
         return file.name.endsWith(ENCRYPTED_EXT)
     }
@@ -180,7 +183,7 @@ object CryptoManager {
         }
     }
 
-    // ── 便捷方法：加密单个文件（自动生成加密文件名、删除源文件） ──
+    // ── 便捷方法：加密单个文件（自动生成加密文件名、移走源文件） ──
 
     fun encryptFileInPlace(file: File, key: SecretKey): File {
         val encryptedName = encryptFileName(file.name, key)
@@ -189,7 +192,7 @@ object CryptoManager {
         encryptFile(file, encryptedFile, key)
 
         if (encryptedFile.exists() && encryptedFile.length() > 0) {
-            file.delete()
+            removeSourceFile(file)
             Logger.d("CryptoManager: 加密完成 ${file.name} -> ${encryptedFile.name}")
         }
 
@@ -207,11 +210,47 @@ object CryptoManager {
         decryptFile(file, outputFile, key)
 
         if (outputFile.exists() && outputFile.length() > 0) {
-            file.delete()
+            removeSourceFile(file)
             Logger.d("CryptoManager: 解密完成 ${file.name} -> ${outputFile.name}")
         }
 
         return outputFile
+    }
+
+    /** 隐藏残留后缀：rename 后删不掉时留下的文件（以 "." 开头，扫描/相册都看不到） */
+    private const val RESIDUE_SUFFIX = ".dyresidue"
+
+    /**
+     * 把「已被加密/解密取代」的源文件从可见路径移走。
+     *
+     * 关键：先 rename 改名，再尽力 delete —— 不再只依赖 delete()：
+     * 华为 EMUI 的「回收站」会拦截 unlink，有时把文件改名成隐藏的 `.<原名>.hwbk`（无害残留），
+     * 有时干脆不生效（2026-10-15 20:22 真机：加密 8 个后明文仍留在原路径，明文 + 密文共存 → 列表 8 变 16）。
+     * rename 只改目录项、不触发回收站；即使 rename 也失败，调用方会按返回值登记隐藏（见 SupersededSourceRegistry）。
+     *
+     * @return true = 原路径上的文件已不存在（内容可能以隐藏文件形式残留，但不再参与扫描/列表）
+     */
+    fun removeSourceFile(file: File): Boolean {
+        if (!file.exists()) return true
+
+        val residue = File(file.parentFile, "." + file.name + RESIDUE_SUFFIX)
+        if (file.renameTo(residue) && !file.exists()) {
+            val deleted = residue.delete()
+            Logger.d("CryptoManager: 源文件已移出可见路径: ${file.name} -> ${residue.name}（隐藏残留删除=$deleted）")
+            return true
+        }
+
+        val deleted = file.delete()
+        if (deleted || !file.exists()) {
+            Logger.d("CryptoManager: 源文件已删除: ${file.name}")
+            return true
+        }
+
+        Logger.log(
+            "CryptoManager: 源文件无法移走（rename 与 delete 都被系统拦住），仍需登记隐藏: ${file.absolutePath}",
+            "warn"
+        )
+        return false
     }
 
     // ── 获取缓存缩略图目录 ──
