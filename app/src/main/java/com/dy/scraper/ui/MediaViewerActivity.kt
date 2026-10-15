@@ -57,10 +57,7 @@ class MediaViewerActivity : AppCompatActivity() {
         title = fileNames.getOrElse(currentIndex) { "unknown" }
 
         viewPager = findViewById(R.id.vpMediaViewer)
-        val btnClose = findViewById<ImageButton>(R.id.btnClose)
         val tvIndex = findViewById<TextView>(R.id.tvMediaIndex)
-
-        btnClose.setOnClickListener { finish() }
 
         viewPager.adapter = MediaPagerAdapter()
         viewPager.setCurrentItem(currentIndex, false)
@@ -81,10 +78,18 @@ class MediaViewerActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // 退出（系统返回键/手势）时统一释放播放器并删掉临时解密文件；
+        // 不依赖 RecyclerView 的回收时机，也不依赖页面上的按钮
+        if (::viewPager.isInitialized) {
+            (viewPager.adapter as? MediaPagerAdapter)?.releaseAll()
+        }
         super.onDestroy()
     }
 
     inner class MediaPagerAdapter : RecyclerView.Adapter<MediaPagerAdapter.MediaViewHolder>() {
+
+        /** 当前还绑定着的页面（退出时统一释放，不依赖 RecyclerView 回收时机） */
+        private val boundHolders = mutableSetOf<MediaViewHolder>()
 
         override fun getItemCount(): Int = filePaths.size
 
@@ -97,11 +102,19 @@ class MediaViewerActivity : AppCompatActivity() {
         override fun onBindViewHolder(holder: MediaViewHolder, position: Int) {
             holder.releasePlayer()
             holder.bind(position)
+            boundHolders.add(holder)
         }
 
         override fun onViewRecycled(holder: MediaViewHolder) {
             super.onViewRecycled(holder)
+            boundHolders.remove(holder)
             holder.releasePlayer()
+        }
+
+        /** Activity 退出时统一释放播放器 + 清理临时解密文件 */
+        fun releaseAll() {
+            boundHolders.toList().forEach { it.releasePlayer() }
+            boundHolders.clear()
         }
 
         inner class MediaViewHolder(view: View) : RecyclerView.ViewHolder(view) {

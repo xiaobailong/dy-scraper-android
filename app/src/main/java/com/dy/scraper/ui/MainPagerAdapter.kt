@@ -10,6 +10,7 @@ class MainPagerAdapter(activity: MainActivity) : FragmentStateAdapter(activity) 
     private val encryptFragment = EncryptFragment()
 
     val scrapeFrag: ScrapeFragment get() = scrapeFragment
+    val encryptFrag: EncryptFragment get() = encryptFragment
 
     override fun getItemCount(): Int = 2
 

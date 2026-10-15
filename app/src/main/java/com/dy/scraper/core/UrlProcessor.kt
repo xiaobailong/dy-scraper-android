@@ -11,6 +11,7 @@ import com.dy.scraper.entity.ScrapeStats
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.ImageDedupChecker
 import com.dy.scraper.util.Logger
+import com.dy.scraper.util.Pacing
 import com.dy.scraper.util.Utils
 import java.io.File
 import java.text.SimpleDateFormat
@@ -79,6 +80,9 @@ class UrlProcessor(
         // ── 3. 等待渲染 ──
         Logger.log("[3/6] 等待页面内容渲染...")
         wvm.waitForRender()
+
+        // ── 3.5 反风控：验证页（滑块等）→ 暂停 + 引导人工 + 通过后自动继续 ──
+        pauseForManualVerificationIfNeeded(wvm, urlIdx, urlTotal)
 
         // ── 4. 创建上下文 ──
         val ctx = PageContext(shortUrl = targetUrl, finalUrl = finalUrl)
@@ -355,6 +359,33 @@ class UrlProcessor(
                 )
             )
             Logger.log("  ⚠️ 未提取到任何媒体URL (视频/图片均为 0)，已记录到跳过表", "warn")
+        }
+    }
+
+    /**
+     * 反风控：当前页面若落到验证页（滑块等），暂停本页处理、把 WebView 交给用户手动完成验证，
+     * 通过后自动继续；超时则记日志继续执行。只做检测与等待，不做任何识别或绕过。
+     */
+    private suspend fun pauseForManualVerificationIfNeeded(
+        wvm: WebViewManager,
+        urlIdx: Int,
+        urlTotal: Int,
+    ) {
+        if (!AppConfig.isRiskPauseEnabled(context)) return
+        if (!wvm.isVerificationPage()) return
+
+        Logger.log("  ⚠️ 检测到安全验证页（滑块/风控），已暂停第 $urlIdx/$urlTotal 页", "warn")
+        Logger.log("     请在采集页手动完成验证，通过后会自动继续…", "warn")
+        wvm.notifyVerificationState(true)
+
+        val timeoutMs = AppConfig.DEFAULT_RISK_WAIT_TIMEOUT_MS
+        val passed = wvm.waitForVerificationPassed(timeoutMs)
+
+        wvm.notifyVerificationState(false)
+        if (passed) {
+            Logger.log("  ✓ 验证已通过，继续处理当前页")
+        } else {
+            Logger.log("  ⚠️ 等待验证超时（${Pacing.formatMs(timeoutMs)}），继续执行（本页可能取不到数据）", "warn")
         }
     }
 

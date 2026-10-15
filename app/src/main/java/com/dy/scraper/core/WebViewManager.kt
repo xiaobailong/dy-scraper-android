@@ -319,6 +319,78 @@ class WebViewManager(private val context: Context) {
         return cookieManager.getCookie("https://www.douyin.com") ?: ""
     }
 
+    // ── 反风控：验证页检测 + 人工处理等待（只判定与提示，不识别、不绕过任何验证） ──
+
+    /** 验证页状态变化回调（true = 落到验证页、需要人工处理），由 UI 层设置以显示 WebView 与提示 */
+    var onVerificationStateChange: ((Boolean) -> Unit)? = null
+
+    /** 验证页 URL 关键字特征 */
+    private val RISK_URL_KEYWORDS = listOf(
+        "/verify", "captcha", "challenge", "secsdk", "verify-bar", "puzzle", "sliding"
+    )
+
+    /**
+     * DOM 特征探测脚本（作为 evaluateJavascriptText 的函数体传入）：
+     * 命中常见的滑块/验证容器或提示文案即返回 "1"。
+     */
+    private val VERIFY_PROBE_JS = """
+        try {
+            var sels = ['#captcha_container', '#captcha-verify', '.captcha_verify_container',
+                        '[class*="captcha-verify"]', '[class*="captcha_verify"]',
+                        '[class*="verify-bar"]', '#vc-captcha', '.vc-captcha', '#slideVerify'];
+            for (var i = 0; i < sels.length; i++) {
+                var el = document.querySelector(sels[i]);
+                if (el && el.offsetParent !== null) return '1';
+            }
+            var txt = (document.body ? document.body.innerText : '') || '';
+            txt = txt.slice(0, 3000);
+            var kw = ['拖动下方滑块', '完成安全验证', '请完成验证', '滑动验证', '验证码'];
+            for (var j = 0; j < kw.length; j++) {
+                if (txt.indexOf(kw[j]) >= 0) return '1';
+            }
+            return '';
+        } catch (e) { return ''; }
+    """
+
+    /** 当前页面是否落到验证页（滑块等）：URL 关键字或 DOM 特征任一命中即为 true */
+    suspend fun isVerificationPage(): Boolean {
+        val url = (currentUrl.ifEmpty { finalUrl }).lowercase()
+        if (RISK_URL_KEYWORDS.any { url.contains(it) }) return true
+        return try {
+            evaluateJavascriptText(VERIFY_PROBE_JS).trim() == "1"
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** 通知 UI 层验证状态变化（失败不影响主流程） */
+    fun notifyVerificationState(active: Boolean) {
+        try {
+            onVerificationStateChange?.invoke(active)
+        } catch (e: Exception) {
+            Logger.log("  验证状态回调异常: ${e.message}", "warn")
+        }
+    }
+
+    /**
+     * 等待人工完成验证：每 2s 探测一次，直到不再是验证页；
+     * 超时返回 false（由调用方决定继续或放弃，不阻塞整个任务）。
+     */
+    suspend fun waitForVerificationPassed(timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var lastLogAt = 0L
+        while (System.currentTimeMillis() < deadline) {
+            delay(2_000L)
+            if (!isVerificationPage()) return true
+            val now = System.currentTimeMillis()
+            if (now - lastLogAt >= 30_000L) {
+                lastLogAt = now
+                Logger.log("  仍在等待人工完成验证…（剩余约 ${(deadline - now) / 1000}s）", "warn")
+            }
+        }
+        return false
+    }
+
     // ── 影子请求：用同一会话（Cookie/UA/Referer）重新请求详情 API，抓取响应体 ──
     private fun shadowFetchDetail(url: String) {
         // 重放请求缺页面 JS 现算的 a_bogus → 抖音返回空 body 或整页 HTML（真机日志已证），默认关闭

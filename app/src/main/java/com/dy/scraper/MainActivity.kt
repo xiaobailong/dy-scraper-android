@@ -15,6 +15,9 @@ import com.google.android.material.tabs.TabLayoutMediator
 class MainActivity : AppCompatActivity() {
 
     private lateinit var statusBar: TextView
+    private lateinit var fileCountBar: TextView
+    private lateinit var viewPager: androidx.viewpager2.widget.ViewPager2
+    private var encryptCountText: String = ""
     private lateinit var pagerAdapter: MainPagerAdapter
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -34,8 +37,9 @@ class MainActivity : AppCompatActivity() {
         Logger.d("App version: $versionName")
 
         statusBar = findViewById(R.id.statusBar)
+        fileCountBar = findViewById(R.id.tvFileCountBar)
 
-        val viewPager = findViewById<androidx.viewpager2.widget.ViewPager2>(R.id.viewPager)
+        viewPager = findViewById<androidx.viewpager2.widget.ViewPager2>(R.id.viewPager)
         val tabLayout = findViewById<com.google.android.material.tabs.TabLayout>(R.id.tabLayout)
 
         pagerAdapter = MainPagerAdapter(this)
@@ -55,8 +59,28 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread { statusBar.text = message }
         }
 
+        // 底部状态栏右侧：加密页文件计数（只在加密页显示）
+        pagerAdapter.encryptFrag.onCountUpdate = { text ->
+            encryptCountText = text
+            renderFileCount()
+        }
+        viewPager.registerOnPageChangeCallback(object :
+            androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                renderFileCount()
+            }
+        })
+        renderFileCount()
+
         Logger.logSection("斗虫 (Android WebView)")
         Logger.d("========== onCreate finished ==========")
+    }
+
+    /** 底部状态栏右侧的“共 N 个文件（已选 M 个）”：只在加密页显示 */
+    private fun renderFileCount() {
+        val show = viewPager.currentItem == 1 && encryptCountText.isNotEmpty()
+        fileCountBar.visibility = if (show) View.VISIBLE else View.GONE
+        if (encryptCountText.isNotEmpty()) fileCountBar.text = encryptCountText
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

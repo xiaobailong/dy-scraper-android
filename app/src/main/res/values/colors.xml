@@ -8,4 +8,6 @@
     <color name="text_primary">#DE000000</color>
     <color name="text_secondary">#99000000</color>
     <color name="divider">#1F000000</color>
+    <!-- 底部状态栏：白色 + 略带透明（90% 不透明） -->
+    <color name="bottom_bar_background">#E6FFFFFF</color>
 </resources>

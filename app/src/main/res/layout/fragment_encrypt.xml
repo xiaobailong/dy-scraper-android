@@ -54,15 +54,6 @@
 
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/tvFileCount"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:padding="8dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="13sp"
-        android:text="@string/encrypt_file_count" />
-
     <LinearLayout
         android:id="@+id/llStorageHint"
         android:layout_width="match_parent"

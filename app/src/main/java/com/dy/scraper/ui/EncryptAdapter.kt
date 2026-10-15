@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.dy.scraper.R
 import com.dy.scraper.crypto.CryptoManager
 import com.dy.scraper.util.Logger
+import com.dy.scraper.util.Utils
 import java.io.File
 import javax.crypto.SecretKey
 import kotlin.concurrent.thread
@@ -29,6 +30,18 @@ data class MediaFileItem(
         get() {
             val kb = fileSize / 1024
             return if (kb >= 1024) "${kb / 1024}.${(kb % 1024) / 100} MB" else "$kb KB"
+        }
+
+    /** 列表里显示的短名：中间省略，尾部（时间戳_序号.扩展名）保留完整 */
+    val shortName: String
+        get() = Utils.ellipsizeMiddle(displayName)
+
+    /** 信息行：尾部标识 + 大小 + 类型（标题被省略时靠它认文件） */
+    val infoText: String
+        get() {
+            val type = if (isVideo) "视频" else "图片"
+            val tail = Utils.nameTailKey(displayName)
+            return if (tail.isEmpty()) "$sizeText · $type" else "$tail · $sizeText · $type"
         }
 }
 
@@ -179,8 +192,8 @@ class EncryptAdapter(
         private val tvEncryptStatus: TextView = view.findViewById(R.id.tvEncryptStatus)
 
         fun bind(item: MediaFileItem, position: Int) {
-            tvFileName.text = item.displayName
-            tvFileInfo.text = "${item.sizeText}  ${if (item.isVideo) "视频" else "图片"}"
+            tvFileName.text = item.shortName
+            tvFileInfo.text = item.infoText
             tvEncryptStatus.text = if (item.isEncrypted)
                 context.getString(R.string.encrypt_status_encrypted)
             else

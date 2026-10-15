@@ -3,40 +3,11 @@
 > 上限 12KB（超了照 `WRITING.md` §3 归档；已废弃的移入 `archive/decisions-archive.md`）。
 > 每条：背景 / 决策 / 理由 / 备选与为何不选 / 影响。编号只增不改。模板见 `WRITING.md` §1。
 
-## ADR-001 技术路线：Native Kotlin + WebView（替代 Python Playwright）
-- 日期: 2026-09-28 | 状态: 已采纳
-- 背景: 原 Python 项目 `dy-scraper` 使用 Playwright + urllib 实现抖音内容抓取，需要迁移到 Android 平台。
-- 决策: 采用 **Kotlin + AndroidX + WebView** 方案，WebView 替代 Playwright 做页面渲染和网络拦截，
-  OkHttp 替代 urllib 做直接 HTTP 请求，Room 替代文件存储做持久化记录，Coroutines 替代 asyncio 做异步调度。
-- 理由: WebView 内嵌 Chromium 内核，支持 `shouldInterceptRequest()` 拦截网络请求和 `evaluateJavascript()` DOM 操作，
-  与 Playwright 能力对等；Kotlin Coroutines 是 Android 生态标准异步方案，比 Java Executor 更轻量。
-- 备选与为何不选: ①React Native / Flutter（跨平台方案引入额外框架层，Chromium 引擎仍需原生集成，没有本质优势）；
-  ②纯 OkHttp + HTML Parser（无法执行 JavaScript，抖音页面高度依赖前端渲染，抓不到内容）；
-  ③GeckoView（Mozilla 引擎，Android 兼容性不及 Chromium，社区资源少）。
-- 影响 / 约束: 需要 Android 5.0+ (API 21)；WebView 需要系统 WebView 组件支持（或内置 Chromium WebView）；
-  长时间运行的抓取任务需前台 Service + WakeLock 防止被系统回收。
+## ADR-001 技术路线：Native Kotlin + WebView — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：WebView 顶 Playwright 做渲染/拦截、OkHttp 顶 urllib、Room 顶文件记录、Coroutines 顶 asyncio。
 
-## ADR-002 目录体系：直接下载到最终目录，无临时目录
-- 日期: 2026-09-28 | 状态: 已采纳
-- 背景: 原 Python 项目有 `temp` / `download` 两阶段（先下载到 temp，完成后统一切换到 download），
-  增加了文件移动开销和残留清理逻辑。
-- 决策: **去掉临时目录**，文件直接下载到最终目标目录（`downloadVideoDir` / `downloadImageDir`），
-  下载过程中即时去重（MD5 / pHash），下载完成即最终状态。
-- 理由: Android 的文件系统比服务器更简单，不需要跨盘移动；直接下载减少了 IO 开销和目录管理复杂度；
-  去重注册表（MD5 扫描已有文件）在下载前初始化，实时跳过重复文件。
-- 备选与为何不选: 保留下载中途的临时切换逻辑（增加 FileStorageManager 复杂度，移动失败需额外处理）。
-- 影响 / 约束: FileStorageManager 简化为只负责目录创建；ScraperWorker MD5 扫描范围缩减一半；
-  下载失败的中间文件会留在最终目录（由后续的 MD5 扫描过滤）。
+## ADR-002 目录体系：直接下载到最终目录 — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：不做 temp 中转，边下边去重（MD5/pHash），失败残留靠 MD5 扫描过滤。
 
-## ADR-003 详情 API 响应体：WebView 影子请求为主，JS 桥为辅
-- 日期: 2026-09-29 | 状态: 已采纳
-- 背景: Playwright 版 `page.on("response") + resp.text()` 能直接读到详情响应体；WebView 的 `shouldInterceptRequest` 只给 URL 不给 body；
-  `evaluateJavascript` 又不 await Promise（`PIT-001`）→ 视频高清地址拿不到（`ISSUE-001`）。
-- 决策: 命中 `DETAIL_API_PATTERNS` 时，用同一会话（CookieManager 的 Cookie + 同 UA + Referer）在后台线程**重放请求抓 body**（"影子请求"），
-  入队 `WebViewManager.detailBodies`；`UrlProcessor` 等待并用 `DouyinApiCollector.parseAllBodies` 解析。JS fetch + `DyBridge.onApiResponse` 作兜底。
-- 备选与为何不选: ① 只记 URL（原实现）→ 拿不到 body，故障根因；② 在 `shouldInterceptRequest` 里同步请求 → 阻塞 WebView 资源加载；
-  ③ 只靠 JS fetch → Promise 无法 await，桥接只能兜底（CSP/风控场景可能失败）。
-- 影响 / 约束: 详情接口被请求两次（WebView 一次、影子一次）；影子失败不影响页面；同一 URL 只抓一次。
+## ADR-003 详情 API 响应体：影子请求重放 — 已废弃（被 ADR-006 取代）／已归档（2026-10-15）：见 archive/decisions-archive.md；要点：重放无 a_bogus → body 恒空，改走 document-start 旁听。
 
 ## ADR-004 SSR/内嵌数据：JS 只做定位，解析放 Kotlin（可单测）
 - 日期: 2026-09-29 | 状态: 已采纳
@@ -95,4 +66,38 @@
   删除 3 个已无用字符串（`encrypt_btn_refresh` / `encrypt_btn_select_all` / `encrypt_btn_unselect_all`），计数行文案加"· 列表顶部下拉刷新"；
   已真机实测：首行点击全选/取消全选 ✓、首行左滑不删 ✓、顶部下拉触发刷新 ✓、滚离顶部小幅下拉不触发 ✓、点列表项进查看器序号正确（2 / 8）✓；
   空列表下拉未实测（结构上由"列表常驻可见 + 覆盖层空态提示"保证）。
+
+
+## ADR-009 加密页长文件名显示：中间省略 + 信息行带「尾部标识」
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 文件名 = `<作者>_<标题≤50字>_<下载时间戳>_<序号>.<ext>`，最长 80+ 字符；列表行 `tvFileName` 只有 2 行（14sp、宽约 684px≈19 字/行）
+  + `ellipsize="end"` → 被砍掉的恰好是尾部 `_yyyyMMdd_HHmmss_序号.ext`（区分同一帖子第几张的唯一信息），而信息行只有 `248 KB 图片`。
+- 决策: ① 新增 `Utils.ellipsizeMiddle(name, headChars=10, minTailChars=22)`：长名显示成 `头部…尾部`，尾部从最近的 `_` 边界开始
+  （实测 `我的_860连体裤穿…_20261015_122204_4.webp`）；② 新增 `Utils.nameTailKey(name)` 提取 `yyyyMMdd_HHmmss_序号.ext`（不匹配则退化为扩展名）；
+  ③ `MediaFileItem` 新增 `shortName` / `infoText` 派生属性供适配器绑定，信息行改为 `20261015_122204_4.webp · 242 KB · 图片`。
+- 备选与为何不选: ① 单行 + 原生 `ellipsize="middle"` —— 一行放不下 80 字符，省略后只剩首尾几个字；② 3 行 + `app:autoSizeTextType`
+  自动缩放字号 —— 名字能全显示，但行高变大（每屏少 1~2 行）、字号不统一；③ 改下载命名规则把标题截短（`take(50)`→`take(20)`）——
+  只对新文件生效、历史文件仍是长名，且削弱可读性（可作为后续叠加项）。
+- 影响与约束: 纯显示层，不动真实文件名；`tvFileName` 保留 `maxLines=2 + ellipsize="end"` 兜底；`item_select_all_row` / 查看器不受影响；
+  单测覆盖（`UtilsTest`：短名不变、尾部完整且对齐 `_` 边界、无下划线退化、阈值非正不处理、`nameTailKey` 提取与退化），
+  共 131 个单测全绿；真机实测显示 `我的_860连体裤穿…_20261015_122204_4.webp` + `20261015_122204_4.webp · 242 KB · 图片`。
+
+
+## ADR-010 预览页去掉「×」，改用系统返回
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 预览页（`MediaViewerActivity`）右上角常驻「×」关闭按钮，与系统返回重复且遮挡画面。
+- 决策: 删除 `btnClose`（布局 + 监听 + 无用字符串 `media_viewer_close`）；退出只走系统返回键/手势；
+  同时把资源清理收到 `onDestroy()`：适配器用 `boundHolders` 记录已绑定页，统一 `releasePlayer()`（释放 ExoPlayer + 删临时解密文件），不依赖 RecyclerView 回收时机。
+- 备选与为何不选: 保留「×」改半透明/几秒后自动隐藏 —— 仍与系统返回重复，且要多一套显隐逻辑。
+- 影响与约束: `onDestroy` 里用 `::viewPager.isInitialized` 防护（无文件早退路径不会崩）；真机实测：预览页 dump 无 `btnClose`、序号 `2 / 8` 正常，手势返回后停在本页列表（`mResumedActivity=MainActivity`）且日志出现 `releasePlayer 被调用`。
+  提醒：用 `adb shell input keyevent 4` 验证时，合成事件会被二次投递把 MainActivity 也 finish（App 退到后台的假象），真实手势/按键无此现象。
+
+## ADR-011 加密页计数并入底部状态栏（白底略带透明）
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 「共 N 个文件（已选 M 个）」原来独占加密页列表上方一行；Activity 底部本就有状态栏（原紫底白字）。
+- 决策: 删掉 `fragment_encrypt.xml` 的 `tvFileCount`；`activity_main.xml` 底部改 `bottomBar`（左 `statusBar` + 右 `tvFileCountBar`，计数只在加密页显示）；
+  底色 `@color/bottom_bar_background`(#E6FFFFFF，白色 90% 不透明)、文字改 `text_secondary`；`EncryptFragment.onCountUpdate` → `MainActivity.renderFileCount()` 统一渲染与显隐。
+- 备选与为何不选: 计数常驻 → 采集页显示陈旧数据；两段拼一行 → 互相挤占、易被 ellipsize 吃掉。
+- 影响与约束: `statusBar` id 与抓取进度逻辑不变；`MainPagerAdapter` 新增 `encryptFrag`；下拉提示缩短为「· 下拉刷新」；真机截图核对过白底深字。
+
 

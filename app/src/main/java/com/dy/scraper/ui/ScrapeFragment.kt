@@ -204,6 +204,10 @@ class ScrapeFragment : Fragment() {
         val etVideoSizeFilter = dialogView.findViewById<EditText>(R.id.etVideoSizeFilter)
         val switchUrlDedup = dialogView.findViewById<SwitchCompat>(R.id.switchUrlDedup)
         val switchNetworkLog = dialogView.findViewById<SwitchCompat>(R.id.switchNetworkLog)
+        val etPageInterval = dialogView.findViewById<EditText>(R.id.etPageInterval)
+        val etBatchInterval = dialogView.findViewById<EditText>(R.id.etBatchInterval)
+        val etJitterPercent = dialogView.findViewById<EditText>(R.id.etJitterPercent)
+        val switchRiskPause = dialogView.findViewById<SwitchCompat>(R.id.switchRiskPause)
 
         val ctx = requireContext()
         etPageLoadTimeout.setText(AppConfig.getPageLoadTimeoutMs(ctx).toString())
@@ -217,6 +221,10 @@ class ScrapeFragment : Fragment() {
         etVideoSizeFilter.setText(AppConfig.getVideoSizeFilterMb(ctx).toString())
         switchUrlDedup.isChecked = AppConfig.isUrlDedupEnabled(ctx)
         switchNetworkLog.isChecked = AppConfig.isNetworkLogEnabled(ctx)
+        etPageInterval.setText(AppConfig.getPageIntervalMs(ctx).toString())
+        etBatchInterval.setText(AppConfig.getBatchIntervalMs(ctx).toString())
+        etJitterPercent.setText(AppConfig.getJitterPercent(ctx).toString())
+        switchRiskPause.isChecked = AppConfig.isRiskPauseEnabled(ctx)
 
         btnSelectFolder.setOnClickListener {
             pendingFolderEditText = etDownloadRootPath
@@ -235,8 +243,11 @@ class ScrapeFragment : Fragment() {
                 val maxImageWorkers = etMaxImageWorkers.text.toString().toIntOrNull()
                 val imageSizeFilter = etImageSizeFilter.text.toString().toLongOrNull()
                 val videoSizeFilter = etVideoSizeFilter.text.toString().toLongOrNull()
+                val pageInterval = etPageInterval.text.toString().toLongOrNull()
+                val batchInterval = etBatchInterval.text.toString().toLongOrNull()
+                val jitterPercent = etJitterPercent.text.toString().toIntOrNull()
 
-                if (listOf(pageLoadTimeout, renderWait, detailApiWait, downloadTimeout, maxVideoWorkers, maxImageWorkers, imageSizeFilter, videoSizeFilter).any { it == null }) {
+                if (listOf(pageLoadTimeout, renderWait, detailApiWait, downloadTimeout, maxVideoWorkers, maxImageWorkers, imageSizeFilter, videoSizeFilter, pageInterval, batchInterval, jitterPercent).any { it == null }) {
                     Toast.makeText(ctx, R.string.scraper_settings_param_invalid, Toast.LENGTH_LONG).show()
                     return@setPositiveButton
                 }
@@ -259,6 +270,10 @@ class ScrapeFragment : Fragment() {
                 AppConfig.setUrlDedupEnabled(ctx, switchUrlDedup.isChecked)
                 AppConfig.setNetworkLogEnabled(ctx, switchNetworkLog.isChecked)
                 Logger.setNetworkLogEnabled(ctx, switchNetworkLog.isChecked)
+                AppConfig.setPageIntervalMs(ctx, pageInterval!!)
+                AppConfig.setBatchIntervalMs(ctx, batchInterval!!)
+                AppConfig.setJitterPercent(ctx, jitterPercent!!)
+                AppConfig.setRiskPauseEnabled(ctx, switchRiskPause.isChecked)
 
                 Toast.makeText(ctx, R.string.scraper_settings_saved, Toast.LENGTH_SHORT).show()
                 Logger.d("Scraper settings dialog: saved")
@@ -504,6 +519,10 @@ class ScrapeFragment : Fragment() {
 
         val wvm = WebViewManager(activity, scraperWebView)
         webViewManager = wvm
+        // 反风控：检测到验证页时由引擎回调（工作线程）→ 切回 UI 线程提示并让出 WebView
+        wvm.onVerificationStateChange = { active ->
+            activity.runOnUiThread { onVerificationStateChanged(active) }
+        }
 
         scrapeJob = lifecycleScope.launch {
             var successCount = 0
@@ -540,6 +559,8 @@ class ScrapeFragment : Fragment() {
                 }
                 wvm.cleanup()
                 webViewManager = null
+                // 若任务在验证页暂停期间结束，恢复日志区显示
+                view?.findViewById<View>(R.id.scrollView)?.visibility = View.VISIBLE
             }
         }
     }
@@ -557,6 +578,21 @@ class ScrapeFragment : Fragment() {
         webViewManager?.cleanup()
         webViewManager = null
         Logger.log("  抓取任务已取消")
+    }
+
+    /**
+     * 反风控：检测到验证页时隐藏日志区、把整块区域让给 WebView 供手动完成验证；通过后恢复日志区。
+     * 由 WebViewManager 在工作线程回调，调用方已切回 UI 线程。
+     */
+    private fun onVerificationStateChanged(active: Boolean) {
+        view?.findViewById<View>(R.id.scrollView)?.visibility = if (active) View.GONE else View.VISIBLE
+        scraperWebView.visibility = View.VISIBLE
+        onStatusUpdate?.invoke(
+            getString(
+                if (active) R.string.status_verification_required
+                else R.string.status_verification_passed
+            )
+        )
     }
 
     private fun updateStartStopButtons(running: Boolean) {

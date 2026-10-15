@@ -57,6 +57,8 @@
     <string name="status_scraping">正在抓取…</string>
     <string name="status_done">抓取完成! 成功: %1$d, 失败: %2$d</string>
     <string name="status_cancelled">抓取已取消</string>
+    <string name="status_verification_required">⚠ 请手动完成安全验证（拖滑块），完成后自动继续</string>
+    <string name="status_verification_passed">验证已通过，继续抓取…</string>
     <string name="status_error">抓取出错</string>
 
     <string name="hint_url_input">请粘贴链接，每行一个\ne.g. https://www.douyin.com/video/xxx</string>
@@ -82,6 +84,13 @@
     <string name="scraper_settings_video_size_filter">视频最大 (MB)</string>
     <string name="scraper_settings_section_dedup">URL去重</string>
     <string name="scraper_settings_section_network">网络日志</string>
+    <string name="scraper_settings_section_anti_risk">反风控节流</string>
+    <string name="scraper_settings_page_interval">页面间隔 (ms)</string>
+    <string name="scraper_settings_batch_interval">批次间隔 (ms)</string>
+    <string name="scraper_settings_jitter_percent">抖动比例 (%)</string>
+    <string name="scraper_settings_anti_risk_hint">相邻页面/下载批次之间的等待时间（0 = 关闭节流）；抖动让节奏不固定，避免被识别为机器人。调大越不容易触发滑块风控，代价是变慢。</string>
+    <string name="settings_risk_pause_label">验证页暂停等待人工</string>
+    <string name="settings_risk_pause_hint">检测到滑块/验证页时暂停抓取，把页面交给你手动完成，通过后自动继续（只检测与提示，不做任何自动识别或绕过）。</string>
     <string name="scraper_settings_network_log_label">输出网络请求详情</string>
     <string name="scraper_settings_network_log_hint">输出所有 WebView 网络请求/响应到日志文件。受全局日志开关控制：全局关闭时不输出</string>
     <string name="scraper_settings_select_folder">选择</string>
@@ -100,7 +109,7 @@
     <string name="encrypt_unselect_all_row">取消全选（已选 %1$d/%2$d）</string>
     <string name="encrypt_btn_grant_storage">授予“所有文件访问”</string>
     <string name="encrypt_storage_hint">Android 11+ 的 Download 目录按“创建者”隔离：本 App 看不到其他 App / 电脑传进来的文件（列表会少文件）。授予“所有文件访问”后即可显示全部文件。</string>
-    <string name="encrypt_file_count">共 %1$d 个文件（已选 %2$d 个）· 列表顶部下拉刷新</string>
+    <string name="encrypt_file_count">共 %1$d 个文件（已选 %2$d 个）· 下拉刷新</string>
     <string name="encrypt_no_key">尚未生成或导入密钥\n请先生成密钥或导入已有密钥</string>
     <string name="encrypt_empty">暂无媒体文件</string>
     <string name="encrypt_thumbnail_desc">缩略图</string>
@@ -121,6 +130,5 @@
     <!-- 媒体查看器 -->
     <string name="media_viewer_title">查看媒体</string>
     <string name="media_viewer_image_desc">全屏图片</string>
-    <string name="media_viewer_close">关闭</string>
     <string name="media_viewer_decrypt_failed">解密失败，无法查看</string>
 </resources>

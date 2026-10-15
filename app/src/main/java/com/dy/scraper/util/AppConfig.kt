@@ -16,6 +16,11 @@ object AppConfig {
     const val KEY_DOWNLOAD_TIMEOUT = "download_timeout"
     const val KEY_MAX_VIDEO_WORKERS = "max_video_workers"
     const val KEY_MAX_IMAGE_WORKERS = "max_image_workers"
+    // ── 反风控节流（降低触发滑块/风控的概率） ──
+    const val KEY_PAGE_INTERVAL_MS = "page_interval_ms"
+    const val KEY_BATCH_INTERVAL_MS = "batch_interval_ms"
+    const val KEY_JITTER_PERCENT = "jitter_percent"
+    const val KEY_RISK_PAUSE_ENABLED = "risk_pause_enabled"
     const val KEY_DOWNLOAD_ROOT_PATH = "download_root_path"
     const val KEY_IMAGE_SIZE_FILTER_KB = "image_size_filter_kb"
     const val KEY_VIDEO_SIZE_FILTER_MB = "video_size_filter_mb"
@@ -26,8 +31,14 @@ object AppConfig {
     const val DEFAULT_RENDER_WAIT_MS = 5_000L
     const val DEFAULT_DETAIL_API_WAIT_MS = 20_000L
     const val DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 120
-    const val DEFAULT_MAX_VIDEO_WORKERS = 5
-    const val DEFAULT_MAX_IMAGE_WORKERS = 8
+    // 反风控：并发先保守（3/4），配合下面的间隔与抖动使用
+    const val DEFAULT_MAX_VIDEO_WORKERS = 3
+    const val DEFAULT_MAX_IMAGE_WORKERS = 4
+    const val DEFAULT_PAGE_INTERVAL_MS = 2_500L      // 页面之间的基础间隔
+    const val DEFAULT_BATCH_INTERVAL_MS = 800L       // 下载批次之间的基础间隔
+    const val DEFAULT_JITTER_PERCENT = 50            // 抖动比例 50% → 实际间隔 = 基础值 × [1, 1.5)
+    const val DEFAULT_RISK_PAUSE_ENABLED = true      // 检测到验证页时暂停等待人工处理
+    const val DEFAULT_RISK_WAIT_TIMEOUT_MS = 300_000L // 等待人工过验证的上限（5 分钟）
     const val DEFAULT_IMAGE_SIZE_FILTER_KB = 50L
     const val DEFAULT_VIDEO_SIZE_FILTER_MB = 20L
     const val DEFAULT_NETWORK_LOG_ENABLED = true
@@ -233,6 +244,55 @@ object AppConfig {
     fun setMaxImageWorkers(context: Context, value: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit().putInt(KEY_MAX_IMAGE_WORKERS, value).apply()
+    }
+
+    // ── 反风控节流参数 ──
+
+    /** 页面之间（相邻两个 URL）的基础等待间隔，0 = 不等待 */
+    fun getPageIntervalMs(context: Context): Long {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_PAGE_INTERVAL_MS, DEFAULT_PAGE_INTERVAL_MS)
+    }
+
+    fun setPageIntervalMs(context: Context, value: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_PAGE_INTERVAL_MS, value).apply()
+    }
+
+    /** 下载批次之间的基础等待间隔，0 = 不等待 */
+    fun getBatchIntervalMs(context: Context): Long {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_BATCH_INTERVAL_MS, DEFAULT_BATCH_INTERVAL_MS)
+    }
+
+    fun setBatchIntervalMs(context: Context, value: Long) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putLong(KEY_BATCH_INTERVAL_MS, value).apply()
+    }
+
+    /** 抖动比例（百分数，0-200），配合页面/批次间隔使用，避免固定节奏 */
+    fun getJitterPercent(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_JITTER_PERCENT, DEFAULT_JITTER_PERCENT)
+    }
+
+    fun setJitterPercent(context: Context, percent: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_JITTER_PERCENT, percent.coerceIn(0, 200)).apply()
+    }
+
+    /** 抖动比例（小数形式，供 Pacing 使用） */
+    fun getJitterRatio(context: Context): Double = getJitterPercent(context) / 100.0
+
+    /** 检测到验证页（滑块等）时是否暂停等待人工处理 */
+    fun isRiskPauseEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_RISK_PAUSE_ENABLED, DEFAULT_RISK_PAUSE_ENABLED)
+    }
+
+    fun setRiskPauseEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_RISK_PAUSE_ENABLED, enabled).apply()
     }
 
     fun isNetworkLogEnabled(context: Context): Boolean {

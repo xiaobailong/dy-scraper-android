@@ -15,17 +15,6 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent" />
 
-        <ImageButton
-            android:id="@+id/btnClose"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:layout_margin="16dp"
-            android:src="@android:drawable/ic_menu_close_clear_cancel"
-            android:background="@android:color/transparent"
-            android:tint="@android:color/white"
-            android:scaleType="fitCenter"
-            android:contentDescription="@string/media_viewer_close" />
-
     </FrameLayout>
 
     <TextView

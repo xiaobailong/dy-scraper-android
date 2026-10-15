@@ -12,7 +12,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -36,13 +35,15 @@ import javax.crypto.SecretKey
 class EncryptFragment : Fragment() {
 
     private lateinit var rvMediaFiles: RecyclerView
-    private lateinit var tvFileCount: TextView
     private lateinit var llNoKeyHint: View
     private lateinit var llEmptyHint: View
     private lateinit var swipeRefresh: SwipeRefreshLayout
     private lateinit var llStorageHint: View
     private lateinit var btnGrantStorage: Button
     private lateinit var adapter: EncryptAdapter
+
+    /** 底部状态栏右侧的计数回调（由 MainActivity 注入，用于“共 N 个文件（已选 M 个）”合并显示） */
+    var onCountUpdate: ((String) -> Unit)? = null
 
     private val mediaFileExtensions = setOf(
         "mp4", "webm", "mov", "m4v", "flv", "3gp", "ts",
@@ -92,7 +93,6 @@ class EncryptFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         rvMediaFiles = view.findViewById(R.id.rvMediaFiles)
-        tvFileCount = view.findViewById(R.id.tvFileCount)
         llNoKeyHint = view.findViewById(R.id.llNoKeyHint)
         llEmptyHint = view.findViewById(R.id.llEmptyHint)
         swipeRefresh = view.findViewById(R.id.swipeRefresh)
@@ -104,11 +104,7 @@ class EncryptFragment : Fragment() {
             keyProvider = { getKey() },
             onItemClick = { item -> openMediaViewer(item) },
             onSelectionChanged = { selectedCount ->
-                tvFileCount.text = getString(
-                    R.string.encrypt_file_count,
-                    adapter.getTotalCount(),
-                    selectedCount
-                )
+                publishCount(adapter.getTotalCount(), selectedCount)
             }
         )
 
@@ -223,6 +219,11 @@ class EncryptFragment : Fragment() {
         refreshFileList()
     }
 
+    /** 把“共 N 个文件（已选 M 个）”推到 Activity 底部状态栏（加密页可见时显示） */
+    private fun publishCount(total: Int, selected: Int) {
+        onCountUpdate?.invoke(getString(R.string.encrypt_file_count, total, selected))
+    }
+
     private fun getKey(): SecretKey? = CryptoManager.getKey(requireContext())
 
     private fun refreshFileList() {
@@ -243,7 +244,7 @@ class EncryptFragment : Fragment() {
             llEmptyHint.visibility = View.GONE
             swipeRefresh.visibility = View.GONE
             adapter.setItems(emptyList())
-            tvFileCount.text = getString(R.string.encrypt_file_count, 0, 0)
+            publishCount(0, 0)
             swipeRefresh.isRefreshing = false
             return
         }

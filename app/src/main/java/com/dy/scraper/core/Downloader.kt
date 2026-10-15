@@ -5,12 +5,14 @@ import com.dy.scraper.entity.PageContext
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.ImageDedupChecker
 import com.dy.scraper.util.Logger
+import com.dy.scraper.util.Pacing
 import com.dy.scraper.util.Utils
 import com.dy.scraper.util.VideoDedupChecker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -74,6 +76,7 @@ object Downloader {
         val tmpFile = File(savePath.parentFile, savePath.name + ".part")
 
         for (attempt in 0..1) {
+            var riskCode = 0
             try {
                 val requestBuilder = Request.Builder()
                     .url(url)
@@ -87,6 +90,7 @@ object Downloader {
                 client.newCall(requestBuilder.build()).execute().use { response ->
                     if (!response.isSuccessful) {
                         lastError = "HTTP ${response.code} ${response.message}"
+                        if (Pacing.isRiskHttpCode(response.code)) riskCode = response.code
                         return@use
                     }
                     val body = response.body
@@ -148,7 +152,16 @@ object Downloader {
 
             Utils.safeDelete(tmpFile)
             if (attempt == 0) {
-                Logger.log("  下载失败($lastError)，重试一次: ${url.take(60)}...", "warn")
+                // 反风控：失败后按「指数退避 + 抖动」等待再重试，风控码单独提示
+                val waitMs = Pacing.backoffDelayMs(attempt)
+                val reason = if (riskCode != 0) "疑似风控 (HTTP $riskCode)" else "下载失败($lastError)"
+                Logger.log("  ${reason}，${Pacing.formatMs(waitMs)} 后重试一次: ${url.take(60)}...", "warn")
+                try {
+                    Thread.sleep(waitMs)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return Triple(false, lastError, "")
+                }
             }
         }
 
@@ -190,7 +203,20 @@ object Downloader {
 
         val results = mutableListOf<DownloadResult>()
         val batchSize = maxWorkers.coerceAtLeast(1)
-        for (batch in jobs.indices.chunked(batchSize)) {
+        val batches = jobs.indices.chunked(batchSize)
+        for ((batchIdx, batch) in batches.withIndex()) {
+            // 反风控：批次之间按「批次间隔 + 抖动」错峰，避免连续爆发
+            if (batchIdx > 0) {
+                val appCtx = com.dy.scraper.ScraperApp.instance
+                val waitMs = Pacing.nextDelayMs(
+                    AppConfig.getBatchIntervalMs(appCtx),
+                    AppConfig.getJitterRatio(appCtx),
+                )
+                if (waitMs > 0L) {
+                    Logger.log("  批次节流等待 ${Pacing.formatMs(waitMs)}（下载批次间隔）", "debug")
+                    delay(waitMs)
+                }
+            }
             val batchResults = coroutineScope {
                 batch.map { i ->
                     async { downloadOne(jobs[i], i, jobs.size, fileType, saveDir, registry, vReg, referer, cookies) }
@@ -216,6 +242,13 @@ object Downloader {
         val url = job.url
         val savePath = job.savePath
         val fileName = job.fileName
+
+        // 反风控：批次内请求随机错峰（150-300ms），避免同一毫秒齐发
+        try {
+            Thread.sleep(Pacing.requestStaggerMs())
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
 
         // 下载前 HEAD 请求检查 Content-Length（对齐 Python get_file_size 预检）
         val fileSize = getFileSize(url)

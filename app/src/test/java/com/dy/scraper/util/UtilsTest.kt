@@ -314,4 +314,59 @@ class UtilsTest {
     fun `isAudioUrl webp is NOT audio`() {
         assertFalse(Utils.isAudioUrl("https://example.com/photo.webp"))
     }
+
+    // ==================== ellipsizeMiddle ====================
+
+    @Test
+    fun `ellipsizeMiddle keeps short name unchanged`() {
+        assertEquals("abc.webp", Utils.ellipsizeMiddle("abc.webp"))
+        assertEquals("", Utils.ellipsizeMiddle(""))
+    }
+
+    @Test
+    fun `ellipsizeMiddle keeps tail from underscore boundary`() {
+        val name = "我的_860连体裤穿搭日常穿搭分享正常街拍穿搭普通身材_20261015_122204_4.webp"
+        val shown = Utils.ellipsizeMiddle(name)
+        // 尾部（时间戳_序号.扩展名）必须完整保留，头部取前 headChars 个字符
+        assertEquals("_20261015_122204_4.webp", shown.substringAfter("…"))
+        assertEquals(name.take(10), shown.substringBefore("…"))
+        assertTrue(shown.length < name.length)
+    }
+
+    @Test
+    fun `ellipsizeMiddle long name without underscore falls back to char split`() {
+        val name = "a".repeat(80)
+        val shown = Utils.ellipsizeMiddle(name)
+        assertTrue(shown.contains("…"))
+        assertEquals(10 + 1 + 22, shown.length)
+    }
+
+    @Test
+    fun `ellipsizeMiddle disabled when thresholds non positive`() {
+        val name = "我的_860连体裤穿搭日常穿搭分享正常街拍穿搭普通身材_20261015_122204_4.webp"
+        assertEquals(name, Utils.ellipsizeMiddle(name, 0, 22))
+        assertEquals(name, Utils.ellipsizeMiddle(name, 10, 0))
+    }
+
+    // ==================== nameTailKey ====================
+
+    @Test
+    fun `nameTailKey extracts date time index and ext`() {
+        assertEquals(
+            "20261015_122204_4.webp",
+            Utils.nameTailKey("我的_860连体裤穿搭日常穿搭分享正常街拍穿搭普通身材_20261015_122204_4.webp")
+        )
+        assertEquals(
+            "20261015_160156_0.mp4",
+            Utils.nameTailKey("我的_应该不会吧案场客服打工人的心酸牛马_20261015_160156_0.mp4")
+        )
+    }
+
+    @Test
+    fun `nameTailKey falls back to extension or empty`() {
+        assertEquals("webp", Utils.nameTailKey("enc_AbCd.webp"))
+        assertEquals("enc", Utils.nameTailKey("enc_AbCd.enc"))
+        assertEquals("", Utils.nameTailKey("noext"))
+        assertEquals("", Utils.nameTailKey("trailingdot."))
+    }
 }

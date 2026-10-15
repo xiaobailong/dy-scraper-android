@@ -5,8 +5,10 @@ import com.dy.scraper.data.AppDatabase
 import com.dy.scraper.entity.ScrapeStats
 import com.dy.scraper.util.AppConfig
 import com.dy.scraper.util.Logger
+import com.dy.scraper.util.Pacing
 import com.dy.scraper.util.Utils
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -132,6 +134,18 @@ object ScraperEngine {
                 lastFinalUrl = lastFinalUrl,
             )
             lastFinalUrl = newFinalUrl
+
+            // ── 反风控节流：处理完一页后按「页面间隔 + 抖动」等待（最后一个 URL 不再等待） ──
+            if (idx < newUrls.lastIndex) {
+                val waitMs = Pacing.nextDelayMs(
+                    AppConfig.getPageIntervalMs(context),
+                    AppConfig.getJitterRatio(context),
+                )
+                if (waitMs > 0L) {
+                    Logger.log("  节流等待 ${Pacing.formatMs(waitMs)}（页面间隔，降低触发风控概率）")
+                    delay(waitMs)
+                }
+            }
         }
 
         // ── 6. 收尾 ──

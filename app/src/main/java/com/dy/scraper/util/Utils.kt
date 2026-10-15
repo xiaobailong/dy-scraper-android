@@ -33,6 +33,36 @@ object Utils {
         return if (cleaned.isNotEmpty()) cleaned.take(50) else "douyin"
     }
 
+    /**
+     * 长文件名「中间省略」：保留头部 + 尾部（尾部尽量从 `_` 边界开始，
+     * 即 `_yyyyMMdd_HHmmss_序号.ext` 这段唯一能区分文件的信息）。
+     *
+     * 例：`我的_860连体裤穿搭日常穿搭分享正常街拍穿搭普通身材_20261015_122204_4.webp`
+     *   → `我的_860连体裤…_20261015_122204_4.webp`
+     */
+    fun ellipsizeMiddle(name: String, headChars: Int = 10, minTailChars: Int = 22): String {
+        if (headChars <= 0 || minTailChars <= 0) return name
+        if (name.length <= headChars + minTailChars + 1) return name
+
+        var tailStart = (name.length - minTailChars).coerceAtLeast(headChars + 1)
+        // 往前找最近的 "_"，让尾部从分隔符开始（避免出现 "…材_20261015…" 这种半截字）
+        val boundary = name.lastIndexOf('_', tailStart)
+        if (boundary >= headChars + 1) tailStart = boundary
+
+        return name.take(headChars) + "…" + name.substring(tailStart)
+    }
+
+    /**
+     * 取文件名的「尾部标识」`yyyyMMdd_HHmmss_序号.ext`（下载命名规则见 `Downloader.downloadFiles`）；
+     * 不符合该规则时退化为扩展名，再没有就返回空串。
+     */
+    fun nameTailKey(name: String): String {
+        val match = Regex("_(\\d{8})_(\\d{6})_(\\d+)\\.([A-Za-z0-9]{1,8})$").find(name)
+        if (match != null) return match.value.removePrefix("_")
+        val dot = name.lastIndexOf('.')
+        return if (dot <= 0 || dot == name.length - 1) "" else name.substring(dot + 1)
+    }
+
     fun isUiAsset(url: String): Boolean {
         val lower = url.lowercase()
         val domain = try {
