@@ -54,7 +54,9 @@ class EncryptFragment : Fragment() {
 
     /** 已知的非媒体文件扩展名：确认与媒体无关，直接跳过（跳过时会记日志，便于排查） */
     private val ignoredExtensions = setOf(
-        "json", "txt", "log", "nomedia", "tmp", "part", "crdownload", "db", "db-wal", "db-shm", "xml"
+        "json", "txt", "log", "nomedia", "tmp", "part", "crdownload", "db", "db-wal", "db-shm", "xml",
+        // 华为「回收站」把删除的文件改名为 .<原名>.hwbk（内容仍在），不能当媒体文件列出来
+        "hwbk"
     )
 
     private val keyImportLauncher = registerForActivityResult(
@@ -321,6 +323,13 @@ class EncryptFragment : Fragment() {
                     return@forEach
                 }
 
+                // 以 "." 开头的隐藏项是系统残留：华为「回收站」把删除的原文件改名为 .<原名>.hwbk，
+                // 内容仍在但扩展名未知；若列进列表，加密后会出现「文件数翻倍」
+                if (file.name.startsWith(".")) {
+                    Logger.d("EncryptFragment: 跳过隐藏/系统残留文件: ${file.name}")
+                    return@forEach
+                }
+
                 val isEncrypted = CryptoManager.isEncryptedFile(file)
                 val item = if (isEncrypted) {
                     val nameWithoutExt = file.name.removeSuffix(CryptoManager.getEncryptedExt())
@@ -481,9 +490,10 @@ class EncryptFragment : Fragment() {
     }
 
     /** 统计两个目标目录下的真实文件总数（用于核对加密/解密前后是否丢文件） */
+    /** 目录内「可见文件」数（排除 . 开头的系统残留，口径与列表一致，仅用于日志对比） */
     private fun countFilesInDirs(): Int {
         return listOf(AppConfig.downloadVideoDir, AppConfig.downloadImageDir)
-            .sumOf { dir -> dir.listFiles()?.count { it.isFile } ?: 0 }
+            .sumOf { dir -> dir.listFiles()?.count { it.isFile && !it.name.startsWith(".") } ?: 0 }
     }
 
     private fun encryptSelected() {

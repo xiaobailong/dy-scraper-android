@@ -10,4 +10,6 @@
     <color name="divider">#1F000000</color>
     <!-- 底部状态栏：白色 + 略带透明（90% 不透明） -->
     <color name="bottom_bar_background">#E6FFFFFF</color>
+    <!-- 顶部工具栏 / Tab 栏：白色略带灰 -->
+    <color name="top_bar_background">#FFF2F2F2</color>
 </resources>

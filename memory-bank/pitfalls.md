@@ -82,23 +82,13 @@
 - 反例: `digest.update(file.readBytes())`。
 - 自检: 单测 `UtilsTest.md5 file equals md5 bytes and handles large file`（3MB 文件，与 readBytes 结果比对）。
 
-## PIT-011 Windows 上 adb devices 恒为空：华为手机 ADB 接口被 winusb.inf 的 MS_COMP_WINUSB 段抢装，缺 DeviceInterfaceGUIDs
-- 触发条件: Windows 10/11 插华为手机（VID_12D1，如 LIO-AN00m），设备管理器里 `ADB Interface` 状态 OK、驱动 `winusb.inf`，但 `adb devices` 永远是空列表。
-- 现象: 没有任何 `unauthorized/offline`（连设备都没枚举出来）；新旧 platform-tools（37.0.1 / 31.0.3）、`ADB_LIBUSB=0/1`、
-  `adb kill-server/start-server`、`reconnect offline` 全部无效。
-- 定位（三个命令）:
-  ① `Get-PnpDevice -PresentOnly | ? { $_.InstanceId -match 'VID_12D1' }` → 接口在（`USB\VID_12D1&PID_107E&MI_02`，Status=OK）；
-  ② `HKLM\SYSTEM\CurrentControlSet\Control\Class\{88BAE032-...}\<n>` 里 `InfSection=WINUSB.NT`、`MatchingDeviceId=USB\MS_COMP_WINUSB`，
-     且设备 `Device Parameters` 下**没有** `DeviceInterfaceGUIDs`；
-  ③ `reg query HKLM\SYSTEM\CurrentControlSet\Control\DeviceClasses\{F72FE0D4-CBCB-407d-8814-9ED673D0DD6B}` → 没有该设备 → 接口没注册 → 用户态程序（含 adb）打不开它。
-- 原因: 设备 compatible ID 里 `USB\MS_COMP_WINUSB` 排在 `USB\COMPAT_VID_12d1&Class_ff&SubClass_42&Prot_01` 之前，
-  而 `C:\Windows\INF\winusb.inf` 有两条模型：`...=WINUSB,USB\MS_COMP_WINUSB`（**不写任何 GUID**）与
-  `...=ADB,USB\Class_ff&SubClass_42&Prot_01`（`[ADB.HW.AddReg]` 写 `DeviceInterfaceGUIDs={F72FE0D4-...}`）；前者被命中 → 没有接口 GUID → adb 枚举不到。
-- 正确做法（任一，均需管理员）:
-  ① 补 GUID 并重启该接口（实测有效）：`reg add "HKLM\SYSTEM\CurrentControlSet\Enum\USB\VID_12D1&PID_107E&MI_02\<实例>\Device Parameters" /v DeviceInterfaceGUIDs /t REG_MULTI_SZ /d "{F72FE0D4-CBCB-407d-8814-9ED673D0DD6B}\0{a5dcbf10-6530-11d2-901f-00c04fb951ed}" /f`
-     然后 `pnputil /restart-device "USB\VID_12D1&PID_107E&MI_02\<实例>"` → `adb devices` 立刻出现设备（回退：删掉该值）；
-  ② 设备管理器 → 该 `ADB Interface` → 更新驱动程序 → 浏览我的电脑 → **从列表选取“ADB Device”**（走 winusb.inf 的 ADB 段）。
-  提示: 设备实例号在“同一 USB 口”才稳定，换口会变；`pnputil` 无 `/update-device`，所以只能走上面两条路。
-- 反例: 反复重启 adb 服务 / 换 adb 版本 / 重装手机驱动 / 按“手机没点允许授权”排查（有接口但枚举不到时，不是授权问题，别去点手机弹窗）。
-- 自检: `adb devices` 非空，且 `(Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Enum\USB\VID_12D1&PID_107E&MI_02\<实例>\Device Parameters").DeviceInterfaceGUIDs` 有 `{F72FE0D4-...}`。
+## PIT-012 本机执行 adb / 长构建：stderr 会中断同一行命令、`tmp\` 内容可能消失
+- 触发条件: 在同一 PowerShell 命令行里把 `adb`（pull/dump/install）与后续解析语句串在一起；或依赖上一条命令写进 `tmp\` 的中间文件跨命令读取。
+- 现象: ① `adb pull` 正常成功（"1 file pulled"）但 PowerShell 报 `NativeCommandError`，后面所有语句都不执行（`2>$null` 也拦不住，命令整体 exit 1）；
+  ② 本次 `tmp\compile.log`/`test.log`/`apk.log`/`ui.xml` 在后续命令里消失（同目录的 `probe.txt`、`ui2~4.xml` 仍在），`adb pull tmp\x` 报 `cannot create file/directory`。
+- 正确做法: ① `adb` 调用单独成句、或包成 `cmd /c "\"...\adb.exe\" pull <src> <abs-dst> 2>nul"`（已验证：16485 bytes 正常落地且不中断后续语句），
+  目标路径写**绝对路径**；② `tmp\` 当纯垃圾桶：拿到结论就写进回复/知识库，需要重读就重新生成（先 `New-Item -ItemType Directory -Force tmp` 再拉/再跑）。
+- 反例: `adb pull x tmp\y 2>$null | Out-Null; <解析>` —— 解析永远跑不到；把关键中间文件当成「下一条命令一定能读到」。
+- 自检: 同一条命令里 `cmd /c "... pull ..."` 之后紧跟的语句有输出（如 `if (Test-Path ...){...}` 打印尺寸）。
 
+## PIT-011 Windows 上 adb devices 恒为空（华为 ADB 接口被 winusb.inf 抢装、缺 DeviceInterfaceGUIDs） — 已归档（2026-10-15）：见 archive/pitfalls-archive.md；要点 + 自检：给该接口的 Device Parameters 补 DeviceInterfaceGUIDs={F72FE0D4-CBCB-407d-8814-9ED673D0DD6B} 后 pnputil /restart-device（或设备管理器改选 ADB Device），adb devices 非空即好。

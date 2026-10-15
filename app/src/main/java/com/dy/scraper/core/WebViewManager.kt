@@ -331,7 +331,9 @@ class WebViewManager(private val context: Context) {
 
     /**
      * DOM 特征探测脚本（作为 evaluateJavascriptText 的函数体传入）：
-     * 命中常见的滑块/验证容器或提示文案即返回 "1"。
+     * ① 命中常见的滑块/验证容器即返回 "1"；
+     * ② 仅当页面**没有**媒体元素（说明是被验证页拦住了、不是正常作品页）时，才用文案兜底判定，
+     *    避免把作品文案/评论里出现的「验证」字样误判成验证页（误判会让任务白等 5 分钟）。
      */
     private val VERIFY_PROBE_JS = """
         try {
@@ -342,9 +344,11 @@ class WebViewManager(private val context: Context) {
                 var el = document.querySelector(sels[i]);
                 if (el && el.offsetParent !== null) return '1';
             }
+            var hasMedia = document.querySelector('video, [data-e2e="feed-active-video"]') !== null;
+            if (hasMedia) return '';
             var txt = (document.body ? document.body.innerText : '') || '';
             txt = txt.slice(0, 3000);
-            var kw = ['拖动下方滑块', '完成安全验证', '请完成验证', '滑动验证', '验证码'];
+            var kw = ['拖动下方滑块', '完成安全验证', '请完成验证', '滑动验证'];
             for (var j = 0; j < kw.length; j++) {
                 if (txt.indexOf(kw[j]) >= 0) return '1';
             }

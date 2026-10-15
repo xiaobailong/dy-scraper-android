@@ -2,6 +2,39 @@
 
 > 倒序追加。每个条目：原 ADR 编号 + 归档日期 + 原文。
 
+## ADR-006 详情响应体：document-start 钩子旁听（取代「重放」）
+- 归档日期: 2026-10-15（主文件 `decisions.md` 超 12KB 上限，按 `WRITING.md` §3 归档；策略仍有效）
+- 日期: 2026-09-29 | 状态: 已采纳（取代 ADR-003 的主路径部分）
+- 背景: ADR-003 定的「影子请求为主 + JS fetch 兜底」在 v1.0.19 / v1.0.20 两次真机都被证伪：重放请求缺 a_bogus，body 恒为空或整页 HTML（`PIT-006`）。
+- 决策: 用 `WebViewCompat.addDocumentStartJavaScript(webView, PageHook.SCRIPT, setOf("*"))` 在 document-start 注入钩子：
+  旁听 `XMLHttpRequest` / `window.fetch` 命中详情 API 的响应体 → `@JavascriptInterface DyBridge.onApiBody(url, body)` → `WebViewManager.detailBodies`；
+  同时用 setter 快照 `window._ROUTER_DATA` 等 SSR 变量（`PIT-007`）。`PageHook.ENABLE_REPLAY_FALLBACK=false`（默认不重放）。
+  WebView 不支持 `DOCUMENT_START_SCRIPT` 特性时退化到 `onPageStarted` 注入（脚本幂等：`window.__dyHookV1`）。
+- 理由: 只有页面自己的请求带正确签名；钩子是 WebView 里唯一等价于 Playwright `page.on("response") + resp.text()` 的位置。
+- 备选与为何不选: ① 继续重放（无签名，恒空/整页，还会二次触发风控）；② 自己实现 a_bogus（算法随版本变化，维护成本不可控）；
+  ③ 只靠 SSR（变量被 hydration 删除）；④ 服务端代理解析（超出本 App 边界）。
+- 影响与约束: 依赖 `androidx.webkit:webkit:1.9.0`（已在 `app/build.gradle.kts`）与设备 WebView M75+；
+  详情 body 经 JS→Java 字符串传递（几十~几百 KB，可接受）；桥回传后按 path+aweme_id 去重（`PIT-008`）。
+
+## ADR-005 版本号与 tag 一律 `v<versionName>`，不带 `-b<versionCode>`
+- 归档日期: 2026-10-15（主文件 `decisions.md` 逼近 12KB 上限，按 `WRITING.md` §3 归档；策略仍有效）
+- 日期: 2026-09-29 | 状态: 已采纳
+- 背景: 原 tag / Release 名是 `v1.0.19-b19`（`build.bat` / `gh-release.bat` 里拼 `-b%V_CODE%`），用户要求任何地方都不要带该后缀。
+- 决策: tag、Release 标题、Release 说明、commit message、tag message 一律只用 `v%V_NAME%`（如 `v1.0.19`），
+  不再输出 `(build %V_CODE%)`；`versionCode` 仍保留在 `version.properties` / build.gradle（Android 必需），仅在控制台诊断行打印。
+- 备选与为何不选: 保留 `-b<code>` 便于区分同版本多次构建 —— 用户明确不要，且 versionCode 在 APK/DB 内可见。
+- 影响 / 约束: 历史远端 tag（如 `v1.0.19-b19`）仍在，清理需用户明确指示；`gh-release.bat:find_apk` 的 APK 名已同步为 `dy-scraper-v<versionName>.apk`。
+
+## ADR-004 SSR/内嵌数据：JS 只做定位，解析放 Kotlin（可单测）
+- 归档日期: 2026-10-15（主文件 `decisions.md` 逼近 12KB 上限，按 `WRITING.md` §3 归档；策略仍有效）
+- 日期: 2026-09-29 | 状态: 已采纳
+- 背景: 视频页数据在 `window._ROUTER_DATA`（图集页 `RENDER_DATA` / 内嵌 script）；全量 dump 会带来 MB 级 JS↔Native 传输，纯 JS 提取又无法本机单测。
+- 决策: `MetadataExtractor.SSR_DUMP_SCRIPT` 只在内嵌数据里深搜「像作品详情」的对象（有 aweme_id/note_id + video.play_addr 或 images），
+  回传 ≤6 个候选详情（另带受限 SSR 文本 200KB/源、总 600KB 兜底）；Kotlin 侧用 `MediaExtractor` 统一解析并做「归属校验」
+  （详情 id 必须在当前页面 URL 里，防止推荐流串页）。
+- 备选与为何不选: ① 全量 dump SSR → 传输过大、易被 WebView 截断；② 纯 JS 提取 → 逻辑散在字符串里、无法单测。
+- 影响 / 约束: 页面结构大改时先看日志 `[SSR] 内嵌详情候选 N 个 → 命中 id=...`；归属校验不通过会记「无媒体URL」跳过，不会串页下载。
+
 ## ADR-003 详情 API 响应体：WebView 影子请求为主，JS 桥为辅
 - 归档日期: 2026-10-15（已被 `ADR-006` 取代；同时主文件 `decisions.md` 超 12KB 上限，按 `WRITING.md` §3 归档）
 - 日期: 2026-09-29 | 状态: 已废弃（被 ADR-006 取代）

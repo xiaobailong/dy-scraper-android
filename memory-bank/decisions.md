@@ -9,35 +9,11 @@
 
 ## ADR-003 详情 API 响应体：影子请求重放 — 已废弃（被 ADR-006 取代）／已归档（2026-10-15）：见 archive/decisions-archive.md；要点：重放无 a_bogus → body 恒空，改走 document-start 旁听。
 
-## ADR-004 SSR/内嵌数据：JS 只做定位，解析放 Kotlin（可单测）
-- 日期: 2026-09-29 | 状态: 已采纳
-- 背景: 视频页数据在 `window._ROUTER_DATA`（图集页 `RENDER_DATA` / 内嵌 script）；全量 dump 会带来 MB 级 JS↔Native 传输，纯 JS 提取又无法本机单测。
-- 决策: `MetadataExtractor.SSR_DUMP_SCRIPT` 只在内嵌数据里深搜「像作品详情」的对象（有 aweme_id/note_id + video.play_addr 或 images），
-  回传 ≤6 个候选详情（另带受限 SSR 文本 200KB/源、总 600KB 兜底）；Kotlin 侧用 `MediaExtractor` 统一解析并做「归属校验」
-  （详情 id 必须在当前页面 URL 里，防止推荐流串页）。
-- 备选与为何不选: ① 全量 dump SSR → 传输过大、易被 WebView 截断；② 纯 JS 提取 → 逻辑散在字符串里、无法单测。
-- 影响 / 约束: 页面结构大改时先看日志 `[SSR] 内嵌详情候选 N 个 → 命中 id=...`；归属校验不通过会记「无媒体URL」跳过，不会串页下载。
+## ADR-004 SSR/内嵌数据：JS 只做定位，解析放 Kotlin（可单测） — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：JS 只回传 ≤6 个「像详情」候选（含受限 SSR 文本快照），解析与「归属校验」全在 Kotlin（`MediaExtractor`），归属不通过记「无媒体URL」跳过。
 
-## ADR-005 版本号与 tag 一律 `v<versionName>`，不带 `-b<versionCode>`
-- 日期: 2026-09-29 | 状态: 已采纳
-- 背景: 原 tag / Release 名是 `v1.0.19-b19`（`build.bat` / `gh-release.bat` 里拼 `-b%V_CODE%`），用户要求任何地方都不要带该后缀。
-- 决策: tag、Release 标题、Release 说明、commit message、tag message 一律只用 `v%V_NAME%`（如 `v1.0.19`），
-  不再输出 `(build %V_CODE%)`；`versionCode` 仍保留在 `version.properties` / build.gradle（Android 必需），仅在控制台诊断行打印。
-- 备选与为何不选: 保留 `-b<code>` 便于区分同版本多次构建 —— 用户明确不要，且 versionCode 在 APK/DB 内可见。
-- 影响 / 约束: 历史远端 tag（如 `v1.0.19-b19`）仍在，清理需用户明确指示；`gh-release.bat:find_apk` 的 APK 名已同步为 `dy-scraper-v<versionName>.apk`。
+## ADR-005 版本号与 tag 一律 `v<versionName>`，不带 `-b<versionCode>` — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：tag/Release/commit 一律只用 `v%V_NAME%`（如 `v1.0.19`），不输出 `(build %V_CODE%)`；versionCode 仅留在 version.properties / build.gradle。
 
-## ADR-006 详情响应体：document-start 钩子旁听（取代「重放」）
-- 日期: 2026-09-29 | 状态: 已采纳（取代 ADR-003 的主路径部分）
-- 背景: ADR-003 定的「影子请求为主 + JS fetch 兜底」在 v1.0.19 / v1.0.20 两次真机都被证伪：重放请求缺 a_bogus，body 恒为空或整页 HTML（`PIT-006`）。
-- 决策: 用 `WebViewCompat.addDocumentStartJavaScript(webView, PageHook.SCRIPT, setOf("*"))` 在 document-start 注入钩子：
-  旁听 `XMLHttpRequest` / `window.fetch` 命中详情 API 的响应体 → `@JavascriptInterface DyBridge.onApiBody(url, body)` → `WebViewManager.detailBodies`；
-  同时用 setter 快照 `window._ROUTER_DATA` 等 SSR 变量（`PIT-007`）。`PageHook.ENABLE_REPLAY_FALLBACK=false`（默认不重放）。
-  WebView 不支持 `DOCUMENT_START_SCRIPT` 特性时退化到 `onPageStarted` 注入（脚本幂等：`window.__dyHookV1`）。
-- 理由: 只有页面自己的请求带正确签名；钩子是 WebView 里唯一等价于 Playwright `page.on("response") + resp.text()` 的位置。
-- 备选与为何不选: ① 继续重放（无签名，恒空/整页，还会二次触发风控）；② 自己实现 a_bogus（算法随版本变化，维护成本不可控）；
-  ③ 只靠 SSR（变量被 hydration 删除）；④ 服务端代理解析（超出本 App 边界）。
-- 影响与约束: 依赖 `androidx.webkit:webkit:1.9.0`（已在 `app/build.gradle.kts`）与设备 WebView M75+；
-  详情 body 经 JS→Java 字符串传递（几十~几百 KB，可接受）；桥回传后按 path+aweme_id 去重（`PIT-008`）。
+## ADR-006 详情响应体：document-start 钩子旁听（取代「重放」） — 已归档（2026-10-15）：见 archive/decisions-archive.md；要点：用 `WebViewCompat.addDocumentStartJavaScript` 注入钩子旁听 XHR/fetch 的详情响应体（+ setter 快照 SSR 变量），`ENABLE_REPLAY_FALLBACK=false`；不支持该特性时退化 `onPageStarted` 注入（`window.__dyHookV1` 幂等）。
 
 ## ADR-007 图片去重改用 DCT pHash（阈值 5）
 - 日期: 2026-09-29 | 状态: 已采纳
@@ -99,5 +75,22 @@
   底色 `@color/bottom_bar_background`(#E6FFFFFF，白色 90% 不透明)、文字改 `text_secondary`；`EncryptFragment.onCountUpdate` → `MainActivity.renderFileCount()` 统一渲染与显隐。
 - 备选与为何不选: 计数常驻 → 采集页显示陈旧数据；两段拼一行 → 互相挤占、易被 ellipsize 吃掉。
 - 影响与约束: `statusBar` id 与抓取进度逻辑不变；`MainPagerAdapter` 新增 `encryptFrag`；下拉提示缩短为「· 下拉刷新」；真机截图核对过白底深字。
+
+## ADR-012 反风控：客户端节流 + 验证页「暂停等人工」，不做任何自动识别/绕过
+- 日期: 2026-10-15 | 状态: 已采纳
+- 背景: 抓取偶发落到抖音验证页（滑块）；触发率主要由请求节奏决定——原实现视频/图片并发 5/8、页与页/批次与批次之间零间隔，节奏固定且偏猛。
+- 决策: ① **节流**：`AppConfig` 新增 `page_interval_ms`(2500) / `batch_interval_ms`(800) / `jitter_percent`(50)，并发默认 3/4；
+  等待时长全部由纯函数 `util/Pacing.kt` 计算（`nextDelayMs` = 基础值 × [1, 1+抖动%]），落点：`ScraperEngine` 页间、
+  `Downloader.downloadFiles` 批次间、`downloadOne` 批次内 150-300ms 随机错峰；下载失败重试改指数退避（2s→5s→10s + 30% 抖动），
+  HTTP 403/412/429 视为风控码并在日志里单独提示（`Pacing.isRiskHttpCode`）。
+  ② **验证页暂停**：`WebViewManager.isVerificationPage()`（URL 关键字 + DOM 容器/提示文案探测，走 `evaluateJavascriptText`）→
+  `UrlProcessor.pauseForManualVerificationIfNeeded()` 暂停本页 → 回调 `onVerificationStateChange` → `ScrapeFragment` 隐藏日志区、
+  让出整块区域给 WebView、底部状态栏提示「请手动完成安全验证」；每 2s 复检，通过即自动继续，5 分钟超时记 warn 后继续。
+- 备选与为何不选: ① 写滑块识别/自动拖动 → 属绕过行为、会招更严风控，用户已明确不做；② 换 IP/换 UA/多端并行 → 单设备无意义，
+  且轮换 UA 破坏现有「全场固定桌面 UA + 复用 WebView Cookie 会话」的一致性；③ 一遇验证就整体中止 → 丢进度，人工过一次更划算。
+- 影响与约束: 抓取整体变慢（每页多 2.5-3.75s、每批次多 0.8-1.2s），要快就在设置里把间隔/抖动调小或设 0；
+  已存过设置的用户保留旧值（并发仍是 5/8，需手动改）；验证检测是启发式，抖音改 DOM/文案后要更新 `RISK_URL_KEYWORDS` / `VERIFY_PROBE_JS`；
+  人工等待上限 `AppConfig.DEFAULT_RISK_WAIT_TIMEOUT_MS`(5 分钟)。抓取逻辑不做真机自测（项目红线），计算部分由 `PacingTest`（9 例）覆盖。
+
 
 
