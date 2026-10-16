@@ -126,6 +126,10 @@ class EncryptFragment : Fragment() {
                 return super.getMovementFlags(recyclerView, viewHolder)
             }
 
+            override fun getSwipeThreshold(viewHolder: RecyclerView.ViewHolder): Float = 0.25f
+
+            override fun getSwipeEscapeVelocity(defaultValue: Float): Float = defaultValue * 0.5f
+
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
