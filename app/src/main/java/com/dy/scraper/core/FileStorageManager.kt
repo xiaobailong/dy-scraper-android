@@ -9,6 +9,7 @@ class FileStorageManager {
     val downloadVideoDir: File get() = AppConfig.downloadVideoDir
     val downloadImageDir: File get() = AppConfig.downloadImageDir
     val resultDir: File get() = AppConfig.resultDir
+    val tmpDir: File get() = AppConfig.tmpDir
 
     fun setup() {
         AppConfig.ensureDirs()
@@ -16,5 +17,20 @@ class FileStorageManager {
         Logger.log("    视频目录: ${downloadVideoDir.absolutePath}")
         Logger.log("    图片目录: ${downloadImageDir.absolutePath}")
         Logger.log("    结果目录: ${resultDir.absolutePath}")
+        Logger.log("    临时目录: ${tmpDir.absolutePath}")
+    }
+
+    fun cleanTmp() {
+        if (!tmpDir.exists()) return
+        tmpDir.listFiles()?.forEach { file ->
+            if (file.isFile) {
+                if (!file.delete()) {
+                    Logger.log("  无法删除临时文件: ${file.name}", "warn")
+                }
+            } else if (file.isDirectory) {
+                file.deleteRecursively()
+            }
+        }
+        Logger.log("  临时目录已清理: ${tmpDir.absolutePath}")
     }
 }

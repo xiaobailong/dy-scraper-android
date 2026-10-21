@@ -91,6 +91,7 @@ object ScraperEngine {
         // ── 3. 准备目录和去重注册表 ──
         val storage = FileStorageManager()
         storage.setup()
+        storage.cleanTmp()
 
         val md5Registry = (
             Utils.scanExistingMd5s(storage.downloadVideoDir) +
@@ -158,6 +159,9 @@ object ScraperEngine {
         Logger.log("    跳过: ${stats.skippedPageCount} 页")
         Logger.log("    失败: ${stats.failedCount} 页")
         Logger.log("    MD5注册表: ${md5Registry.size} 个文件")
+
+        // ── 清理临时文件 ──
+        storage.cleanTmp()
 
         input.reportProgress(Progress(
             pct = 100,

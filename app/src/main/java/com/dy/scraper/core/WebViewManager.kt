@@ -81,7 +81,7 @@ class WebViewManager(private val context: Context) {
         wv.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true
+            databaseEnabled = false
             mediaPlaybackRequiresUserGesture = false
             mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             userAgentString = AppConfig.USER_AGENT
@@ -617,6 +617,17 @@ class WebViewManager(private val context: Context) {
             try { removeJavascriptInterface(PageHook.BRIDGE_NAME) } catch (_: Exception) {}
             clearHistory()
             clearCache(true)
+            clearFormData()
+        }
+        try {
+            android.webkit.WebStorage.getInstance().deleteAllData()
+        } catch (_: Exception) {
+        }
+        try {
+            val cm = android.webkit.CookieManager.getInstance()
+            cm.removeAllCookies(null)
+            cm.flush()
+        } catch (_: Exception) {
         }
     }
 
@@ -627,7 +638,27 @@ class WebViewManager(private val context: Context) {
             shadowExecutor.shutdownNow()
         } catch (_: Exception) {
         }
-        cleanup()
+        try {
+            webView.apply {
+                onPause()
+                stopLoading()
+                try { removeJavascriptInterface(PageHook.BRIDGE_NAME) } catch (_: Exception) {}
+                clearHistory()
+                clearCache(true)
+                clearFormData()
+            }
+        } catch (_: Exception) {
+        }
+        try {
+            android.webkit.WebStorage.getInstance().deleteAllData()
+        } catch (_: Exception) {
+        }
+        try {
+            val cm = android.webkit.CookieManager.getInstance()
+            cm.removeAllCookies(null)
+            cm.flush()
+        } catch (_: Exception) {
+        }
         webView.destroy()
     }
 

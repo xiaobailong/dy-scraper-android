@@ -50,6 +50,7 @@ object AppConfig {
     var downloadVideoDir: File = File("/storage/emulated/0/Download/dy-scraper/videos")
     var downloadImageDir: File = File("/storage/emulated/0/Download/dy-scraper/images")
     var resultDir: File = File("/storage/emulated/0/Download/dy-scraper/results")
+    var tmpDir: File = File("/storage/emulated/0/Download/dy-scraper/tmp")
 
     // ── 文件大小上限 ──
     const val MAX_FILE_SIZE: Long = 500L * 1024 * 1024 // 500MB
@@ -81,6 +82,7 @@ object AppConfig {
         downloadVideoDir = File(root, "videos").also { it.mkdirs() }
         downloadImageDir = File(root, "images").also { it.mkdirs() }
         resultDir = File(root, "results").also { it.mkdirs() }
+        tmpDir = File(root, "tmp").also { it.mkdirs() }
     }
 
     private fun getDefaultDownloadRoot(): File {
@@ -142,7 +144,7 @@ object AppConfig {
     }
 
     fun ensureDirs() {
-        listOf(downloadVideoDir, downloadImageDir, resultDir)
+        listOf(downloadVideoDir, downloadImageDir, resultDir, tmpDir)
             .forEach { it.mkdirs() }
     }
 
