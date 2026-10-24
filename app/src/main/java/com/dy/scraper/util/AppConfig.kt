@@ -49,7 +49,6 @@ object AppConfig {
     // ── 存储路径 ──
     var downloadVideoDir: File = File("/storage/emulated/0/Download/dy-scraper/videos")
     var downloadImageDir: File = File("/storage/emulated/0/Download/dy-scraper/images")
-    var resultDir: File = File("/storage/emulated/0/Download/dy-scraper/results")
     var tmpDir: File = File("/storage/emulated/0/Download/dy-scraper/tmp")
 
     // ── 文件大小上限 ──
@@ -81,7 +80,6 @@ object AppConfig {
         val root = getDownloadRootDir(context)
         downloadVideoDir = File(root, "videos").also { it.mkdirs() }
         downloadImageDir = File(root, "images").also { it.mkdirs() }
-        resultDir = File(root, "results").also { it.mkdirs() }
         tmpDir = File(root, "tmp").also { it.mkdirs() }
     }
 
@@ -144,7 +142,7 @@ object AppConfig {
     }
 
     fun ensureDirs() {
-        listOf(downloadVideoDir, downloadImageDir, resultDir, tmpDir)
+        listOf(downloadVideoDir, downloadImageDir, tmpDir)
             .forEach { it.mkdirs() }
     }
 

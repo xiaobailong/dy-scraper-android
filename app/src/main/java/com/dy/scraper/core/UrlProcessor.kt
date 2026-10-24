@@ -13,7 +13,6 @@ import com.dy.scraper.util.ImageDedupChecker
 import com.dy.scraper.util.Logger
 import com.dy.scraper.util.Pacing
 import com.dy.scraper.util.Utils
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -23,7 +22,6 @@ class UrlProcessor(
     private val db: AppDatabase,
     private val md5Registry: MutableSet<String>,
     private val videoHashRegistry: MutableMap<String, List<String>>,
-    private val resultDir: File,
 ) {
     private val scrapeDao = db.scrapeDao()
 
@@ -215,18 +213,14 @@ class UrlProcessor(
         Logger.log("  图片下载完成: $imgDone 成功, $imgSkip 跳过/失败")
         ctx.pushStage("download_image")
 
-        // ── 8. 保存结果 ──
+        // ── 8. 记录结果 ──
         Logger.log("")
-        Logger.log("[6/6] 保存结果...")
+        Logger.log("[6/6] 记录结果...")
         stats.accumulatePage(ctx)
         stats.printPageResult(ctx)
 
         recordToDb(ctx, targetUrl, finalUrl)
         ctx.pushStage("db_record")
-
-        val resultPath = ctx.saveResultJson(resultDir)
-        ctx.pushStage("save_result")
-        Logger.log("  结果已保存: ${resultPath.absolutePath}")
 
         return Pair(ctx, finalUrl)
     }

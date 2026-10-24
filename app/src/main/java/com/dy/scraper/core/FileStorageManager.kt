@@ -8,7 +8,6 @@ class FileStorageManager {
 
     val downloadVideoDir: File get() = AppConfig.downloadVideoDir
     val downloadImageDir: File get() = AppConfig.downloadImageDir
-    val resultDir: File get() = AppConfig.resultDir
     val tmpDir: File get() = AppConfig.tmpDir
 
     fun setup() {
@@ -16,7 +15,6 @@ class FileStorageManager {
         Logger.log("  存储目录已就绪")
         Logger.log("    视频目录: ${downloadVideoDir.absolutePath}")
         Logger.log("    图片目录: ${downloadImageDir.absolutePath}")
-        Logger.log("    结果目录: ${resultDir.absolutePath}")
         Logger.log("    临时目录: ${tmpDir.absolutePath}")
     }
 

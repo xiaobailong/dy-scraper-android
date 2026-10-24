@@ -1,7 +1,5 @@
 package com.dy.scraper.entity
 
-import com.google.gson.GsonBuilder
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -93,55 +91,4 @@ class PageContext(
 
     val totalUrlCount: Int
         get() = videoUrls.size + imageUrls.size
-
-    // ── JSON 输出 ──
-    fun buildResultJson(): Map<String, Any?> {
-        return mapOf(
-            "targetUrl" to shortUrl,
-            "finalUrl" to finalUrl,
-            "title" to title,
-            "author" to author,
-            "authorCode" to authorCode,
-            "description" to description,
-            "coverUrl" to coverUrl,
-            "downloadStats" to mapOf(
-                "videos" to mapOf(
-                    "total" to videoUrls.size,
-                    "success" to videoSuccessCount,
-                    "duplicate" to videoDupCount
-                ),
-                "images" to mapOf(
-                    "total" to imageUrls.size,
-                    "success" to imageSuccessCount,
-                    "duplicate" to imageDupCount
-                )
-            ),
-            "videos" to videoResults.map {
-                mapOf(
-                    "name" to it.name, "url" to it.url, "path" to it.path,
-                    "size" to it.size, "md5" to it.md5, "status" to it.status
-                )
-            },
-            "images" to imageResults.map {
-                mapOf(
-                    "name" to it.name, "url" to it.url, "path" to it.path,
-                    "size" to it.size, "md5" to it.md5, "status" to it.status
-                )
-            }
-        )
-    }
-
-    fun saveResultJson(resultDir: File): File {
-        resultDir.mkdirs()
-        val gson = GsonBuilder().setPrettyPrinting().create()
-        val json = gson.toJson(buildResultJson())
-        val safeAuthor = com.dy.scraper.util.Utils.cleanTitle(author)
-        val safeTitle = com.dy.scraper.util.Utils.cleanTitle(title)
-        val prefix = if (safeAuthor.isNotEmpty()) "${safeAuthor}_" else ""
-        val timeStr = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "${prefix}${safeTitle}_${timeStr}.json"
-        val resultFile = File(resultDir, fileName)
-        resultFile.writeText(json)
-        return resultFile
-    }
 }

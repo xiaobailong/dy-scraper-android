@@ -46,7 +46,6 @@ object ScraperEngine {
         // ── 1. 准备环境 ──
         AppConfig.initDirs(context)
         Logger.log("下载目录: ${AppConfig.downloadVideoDir.absolutePath}")
-        Logger.log("结果目录: ${AppConfig.resultDir.absolutePath}")
 
         // ── 2. 过滤已处理的 URL ──
         val urlList = input.urls.ifEmpty {
@@ -111,7 +110,6 @@ object ScraperEngine {
             db = db,
             md5Registry = md5Registry,
             videoHashRegistry = videoHashRegistry,
-            resultDir = storage.resultDir,
         )
 
         // ── 5. 逐个处理 URL ──
