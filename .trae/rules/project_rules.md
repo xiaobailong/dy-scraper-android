@@ -84,19 +84,34 @@ dy-scraper-android/
 - 跨运行: `ScraperWorker.filterProcessedUrls()` 按归一化 URL + DB 检查
 
 ### 终端管理（强制）
+- **不要假设终端类型！** 实际可能是 PowerShell 也可能是 cmd，每次执行命令前**必须先探测**。
+  - 探测命令：`$PSVersionTable`
+    - 输出含版本信息（`Name`/`PSVersion` 等）→ **PowerShell**
+    - 报 `is not recognized` → **cmd**
+  - **PowerShell 语法**：分隔用 `;`、重定向 `2>$null`、注释 `#`、变量 `$env:VAR`、末尾 `; exit`
+  - **cmd 语法**：分隔用 `&`/`&&`、重定向 `2>nul`、注释 `rem`、变量 `%VAR%`、末尾 `& exit`
+  - 禁止用 `cmd /c` 包裹命令
 - **终端标签名**：`.vscode/settings.json` 配置 `"terminal.integrated.tabs.title": "dy-scraper"`，所有新终端标签统一显示为 `dy-scraper`。
 - **终端内容标识（必须）**：每个新终端首条命令必须是标识头：
-  ```cmd
-  echo === task-N-用途 ===
+  ```
+  PowerShell: echo "=== task-N-用途 ==="
+  cmd:        echo === task-N-用途 ===
   ```
   - `N` 为递增序号（从 1 开始，本次请求范围内唯一）
   - `用途` 为简短英文描述（如 build、git、test）
-- **终端自关闭（强制）**：由于 `target_terminal` 复用不生效（每次必开新终端），唯一可靠的清理方式是让终端自己关闭自己 —— 每条命令末尾加 `& exit`：
-  ```cmd
-  echo === task-1-git === && cd /d "d:\..." && git status & exit
+- **终端自关闭（强制）**：由于 `target_terminal` 复用不生效（每次必开新终端），唯一可靠的清理方式是让终端自己关闭自己 —— 每条命令末尾加自关闭语句：
   ```
-  构建命令用 `.bat` + `Start-Process` 异步启动（bat 末尾加 `exit`），启动命令也加 `& exit`。
-- **禁止主动杀进程**：`taskkill /f /im cmd.exe` 会误伤用户自己的 cmd；基于 RunCommand 的杀进程方案（获取 PID → taskkill）同样会开新终端，越清越多。仅依赖 `& exit` 自关闭。
+  PowerShell: ...; exit
+  cmd:        ... & exit
+  ```
+  构建命令用 `.bat` + `Start-Process` 异步启动（bat 末尾加 `exit`），启动命令也加自关闭语句。
+- **禁止主动杀进程**：`taskkill /f /im cmd.exe` 会误伤用户自己的 cmd；基于 RunCommand 的杀进程方案（获取 PID → taskkill）同样会开新终端，越清越多。仅依赖自关闭语句。
+
+### Git 操作约定（强制）
+- **禁用分页器**：所有 `git` 命令必须加 `--no-pager` 参数，避免输出被 less 分页器截断需要手动翻页。
+  - 正确：`git --no-pager diff "文件路径"`、`git --no-pager log -n 10`、`git --no-pager status`
+  - 不要省略 `--no-pager`，即使 `PAGER=cat` 环境变量已设置，git 自身的 pager 配置优先级更高会覆盖它。
+- **推送只推当前分支**：禁止 `git push --all` / `--mirror`；禁止一条命令推多个分支。
 
 ### 临时文件管理（强制）
 - **所有临时文件都放在 `tmp\` 目录下**（构建输出、日志、临时批处理等），`tmp\` 已加入 `.gitignore`

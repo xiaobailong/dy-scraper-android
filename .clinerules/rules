@@ -20,10 +20,12 @@
 
 ## 4. 禁止操作
 - 禁止 `git commit` / `push` / 打 tag / 发 Release（只由 `build.bat` 做，且需用户明确要求）。
-- **禁止为了自测跑 `build.bat`**（会真的 push + 发 Release）；校验改动用 Gradle 直跑。
+- **禁止为了自测跑 `build.bat`**（会真的 push + 发 Release）；校验改动用 Gradle 直跑：
+  `"D:\Tools\DevTools\gradle\gradle-8.5\bin\gradle.bat" :app:compileDebugKotlin --no-daemon --console=plain`
 - 禁止把中间文件写在仓库根或 `app\` / `memory-bank\` / `.clinerules\`（一律 `tmp\`）。
 - 禁止 `read all` 知识库、禁止扫全仓库：只读当前任务必需的文件（`.clineignore` 已挡构建产物）。
 - 禁止删知识库条目 / 改编号；禁止写 token、密钥、私密凭据。
+- 本项目的下载/抓取操作需要网络权限和存储权限，禁止在生产环境测试抓取逻辑（防止触发频率限制或存储污染）。
 
 ## 5. 两条强制流程
 - **知识库**：开工读 `memory-bank/README.md`（索引）→ 只读命中的那 1 个文件；收工照 `memory-bank/WRITING.md` 回填。
