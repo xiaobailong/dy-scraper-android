@@ -404,31 +404,45 @@ exit /b 0
 
 REM ============================================
 REM  递增版本号（子过程）
+REM  版本号唯一来源是 version.properties 里的 versionName=x.y.z。
+REM  递增逻辑放在 scripts\tools\bump-version.ps1 里用 -File 调用，原因：
+REM  本机安全策略会拦截命令行里含正则的 -Command 调用（退出码 786）。
+REM  脚本同时更新 version.properties 和 app/build.gradle.kts。
 REM ============================================
 :bump_version
-if not exist "version.properties" (
-    echo [错误] 找不到 version.properties
-    exit /b 1
-)
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "OLD_CODE=%%i"
-set /a NEW_CODE=%OLD_CODE% + 1
-echo       版本递增: versionCode %OLD_CODE% -^> %NEW_CODE%
-
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\tools\bump-version.ps1" -NewCode %NEW_CODE%
-
-if %ERRORLEVEL% neq 0 (
+if not exist "scripts\tools\bump-version.ps1" (
+    echo [错误] 缺少版本号更新脚本: scripts\tools\bump-version.ps1
+    echo        可从 git 恢复: git checkout scripts\tools\bump-version.ps1
     exit /b 1
 )
 
-echo       同步版本到 build.gradle.kts...
-for /f "tokens=2 delims==" %%i in ('findstr "versionName=" version.properties') do set "V_NAME=%%i"
-for /f "tokens=2 delims==" %%i in ('findstr "versionCode=" version.properties') do set "V_CODE=%%i"
+echo       版本号递增中...
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\tools\bump-version.ps1" 2^>^&1`) do set "BUMP_OUT=%%v"
+set "BUMP_RC=!ERRORLEVEL!"
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\tools\sync-gradle-version.ps1" -VersionName "%V_NAME%" -VersionCode %V_CODE%
-
-if %ERRORLEVEL% neq 0 (
+if !BUMP_RC! neq 0 (
+    echo [错误] 版本号递增失败（rc=!BUMP_RC!）
+    echo        !BUMP_OUT!
     exit /b 1
 )
+
+REM 格式: OK=<old>-><new>|<versionCode>
+for /f "tokens=2,3 delims==|>->" %%a in ("!BUMP_OUT!") do (
+    set "CUR_VER=%%a"
+    set "VERSION_NAME=%%b"
+    set "VERSION_CODE=%%c"
+)
+
+if not defined VERSION_NAME (
+    echo [错误] bump-version.ps1 未返回新版本号（输出: !BUMP_OUT!）
+    exit /b 1
+)
+if "!VERSION_NAME!"=="!CUR_VER!" (
+    echo [错误] 版本号未递增：仍是 !VERSION_NAME!
+    exit /b 1
+)
+
+echo       版本递增: !CUR_VER! -^> !VERSION_NAME! ^(code=!VERSION_CODE!^)
 exit /b 0
 
 REM ============================================
